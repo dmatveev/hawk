@@ -6,6 +6,15 @@ data Literal = LitNumeric Integer
              | LitStr String
              deriving (Eq, Show)
 
+data RegExp = Match String
+            | ExprMatch Expression String
+            | ExprNoMatch Expression String
+              deriving (Eq, Show)
+
+data Compound = Combine String Pattern Pattern
+              | Negate Pattern
+              deriving (Eq, Show)
+
 data Expression = Arith Op Expression Expression
                | Const Literal
                | FieldRef Integer
@@ -19,8 +28,9 @@ data Expression = Arith Op Expression Expression
 data Pattern = BEGIN
              | END
              | EXPR Expression
-             | RE String
+             | RE RegExp
              | RANGE Pattern Pattern
+             | COMP Compound
              deriving (Eq, Show)
 
 data Section = Section (Maybe Pattern) (Maybe [Expression])

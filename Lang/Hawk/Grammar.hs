@@ -11,14 +11,14 @@ import Text.Parsec.Expr
 
 import Lang.Hawk.AST
 
-hawkBuiltinVars = ["FS"]
+hawkBuiltinVars = ["FS", "FNR"]
 
 -- Lexer
 lexer = P.makeTokenParser
         ( emptyDef
         { P.commentLine     = "#" 
         , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars
-        , P.reservedOpNames = ["*","/","+","-"]
+        , P.reservedOpNames = ["*","/","+","-","&&","||","!",","]
         })
 parens     = P.parens lexer
 natural    = P.natural lexer
@@ -31,10 +31,12 @@ whitespace = P.whiteSpace lexer
 
 -- Pattern grammar
 pattern = try range
+        <|> try compound
         <|> regexp
         <|> exprp
         <|> begin
         <|> end
+        <?> "pattern"
 
 begin = do
      reserved "BEGIN"
@@ -49,20 +51,53 @@ exprp = do
      return $ EXPR e
      <?> "expression pattern"
 
-regexp = do
+regexp = match <|> try exprMatch <|> exprNoMatch
+     <?> "regexp pattern"
+
+regex = do
      char '/'
      s <- manyTill anyChar (char '/')
-     return $ RE s
-     <?> "regexp pattern"
+     return s
+
+match = do
+     s <- regex
+     return $ RE $ Match s
+
+exprMatch = do
+     e <- expr
+     reservedOp "~"
+     s <- regex
+     return $ RE $ ExprMatch e s
+
+exprNoMatch = do
+     e <- expr
+     reservedOp "!~"
+     s <- regex
+     return $ RE $ ExprNoMatch e s
 
 range = do
      pStart <- singlePattern
-     char ','
+     reservedOp ","
      pEnd <- singlePattern
      return $ RANGE pStart pEnd
      <?> "range pattern"
   where
     singlePattern = exprp <|> regexp
+
+compound = buildExpressionParser compTable compTerm
+           <?> "compound pattern"
+
+compTerm = try (parens regexp)
+         <|> (parens exprp)
+
+compAnd p1 p2 = COMP $ Combine "&&" p1 p2
+compOr  p1 p2 = COMP $ Combine "||" p1 p2
+compNeg p     = COMP $ Negate p
+
+compTable = [ [binary "&&" compAnd AssocLeft]
+            , [binary "||" compOr  AssocLeft]
+            , [prefix "!"  compNeg]
+            ]
 
 -- Expression grammar
 expr = buildExpressionParser table term
@@ -124,9 +159,10 @@ statements = many expr
 -- The AWK book does not give any names to pattern-statement pairs, so I did.
 section = do
     mp <- optionMaybe pattern
+    whitespace
     ma <- optionMaybe action
     when (isNothing mp && isNothing ma) $ fail "empty section"
-    skipMany space
+    whitespace
     return $ Section mp ma
     <?> "section"
 
@@ -138,4 +174,7 @@ action = do
     return s
     <?> "action"
 
-awk = many section
+awk = do
+    ss <- many section
+    eof
+    return ss
