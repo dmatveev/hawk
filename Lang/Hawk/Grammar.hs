@@ -158,8 +158,32 @@ prefix  name fun       = Prefix  (do {reservedOp name; return fun})
 postfix name fun       = Postfix (do {reservedOp name; return fun})
 
 -- Statements
-statements = many expr
-           <?> "statement"
+stExpr = do
+    e <- expr
+    return $ Expression e
+
+stBlock = do
+    char '{'
+    whitespace
+    ss <- many statement
+    char '}'
+    whitespace
+    return $ Block ss
+    <?> "block of statements"
+
+stIf = do
+    reserved "if"
+    cond <- parens expr
+    thenBranch <- (stBlock <|> stExpr)
+    elseBranch <- optionMaybe $ do
+       reserved "else"
+       stBlock <|> stExpr
+    return $ IF cond thenBranch elseBranch
+
+statement = try stIf
+          <|> stBlock
+          <|> stExpr
+          <?> "statement"
 
 -- Top-level AWK constructs
 -- The AWK book does not give any names to pattern-statement pairs, so I did.
@@ -175,9 +199,9 @@ section = do
 action = do
     char '{'
     whitespace
-    s <- statements
+    s <- many statement
     char '}'
-    return s
+    return $ Block s
     <?> "action"
 
 awk = do

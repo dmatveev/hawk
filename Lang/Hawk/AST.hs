@@ -16,23 +16,28 @@ data Notation = Pre
               deriving (Eq, Show)
 
 data Expression = Arith Op Expression Expression
-               | Const Literal
-               | FieldRef Integer
-               | VariableRef String
-               | BuiltInVar String
-               | Assignment Op Expression Expression
-               | Incr Notation Expression
-               | Decr Notation Expression
-               | Relation Op Expression Expression
-               | FunCall String [Expression]
-               | Not Expression
-               | Neg Expression
-               | Concat Expression Expression
-               | In Expression Expression
-               | Logic Op Expression Expression
-               | Match Expression Expression
-               | NoMatch Expression Expression
-               deriving (Eq, Show)
+                | Const Literal
+                | FieldRef Integer
+                | VariableRef String
+                | BuiltInVar String
+                | Assignment Op Expression Expression
+                | Incr Notation Expression
+                | Decr Notation Expression
+                | Relation Op Expression Expression
+                | FunCall String [Expression]
+                | Not Expression
+                | Neg Expression
+                | Concat Expression Expression
+                | In Expression Expression
+                | Logic Op Expression Expression
+                | Match Expression Expression
+                | NoMatch Expression Expression
+                deriving (Eq, Show)
+
+data Statement = Expression Expression
+               | Block [Statement]
+               | IF Expression Statement (Maybe Statement)
+                 deriving (Eq, Show)
 
 data Pattern = BEGIN
              | END
@@ -41,5 +46,5 @@ data Pattern = BEGIN
              | RANGE Pattern Pattern
              deriving (Eq, Show)
 
-data Section = Section (Maybe Pattern) (Maybe [Expression])
+data Section = Section (Maybe Pattern) (Maybe Statement)
              deriving (Eq, Show)
