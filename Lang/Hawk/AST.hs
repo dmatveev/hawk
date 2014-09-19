@@ -17,7 +17,7 @@ data Notation = Pre
 
 data Expression = Arith Op Expression Expression
                 | Const Literal
-                | FieldRef Integer
+                | FieldRef Expression
                 | VariableRef String
                 | BuiltInVar String
                 | Assignment Op Expression Expression
@@ -38,6 +38,8 @@ data Statement = Expression Expression
                | Block [Statement]
                | IF Expression Statement (Maybe Statement)
                | WHILE Expression Statement
+               | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression)
+               | PRINT [Expression]
                  deriving (Eq, Show)
 
 data Pattern = BEGIN

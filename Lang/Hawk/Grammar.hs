@@ -28,7 +28,7 @@ hawkBuiltinVars =
     , "SUBSEP"   -- subscript separator (default "\034")
     ]
 
-hawkConstructs = ["if","while"]
+hawkConstructs = ["print","if","while","for"]
 
 -- Lexer
 lexer = P.makeTokenParser
@@ -39,7 +39,7 @@ lexer = P.makeTokenParser
                               ,"*=","/=","+=","-=","%=","^="
                               ,"++","--"
                               ,"~","!~"
-                              ,"&&","||","!",","]
+                              ,"&&","||","!",",",";"]
         })
 parens     = P.parens lexer
 natural    = P.natural lexer
@@ -94,10 +94,12 @@ term = parens expr
      <|> try funcall
      <|> literal <|> fieldRef <|> variableRef <|> builtInVars
 
-literal = (strlit >>= (return . Const . LitStr))
-     <|> (natural >>= (return . Const . LitNumeric))
-     <|> (regex   >>= (return . Const . LitRE))
+literal = stringLit <|> numericLit <|> regexLit
      <?> "literal"
+
+regexLit   = regex   >>= (return . Const . LitRE)
+stringLit  = strlit  >>= (return . Const . LitStr)
+numericLit = natural >>= (return . Const . LitNumeric)
 
 regex =  do
      char '/'
@@ -108,8 +110,8 @@ regex =  do
 
 fieldRef = do
    char '$'
-   n <- natural
-   return $ FieldRef n
+   e <- (numericLit <|> variableRef)
+   return $ FieldRef e
    <?> "data field reference"
 
 variableRef = do
@@ -122,7 +124,7 @@ funcall = do
    char '('
    s <- expr `sepBy` (symbol ",")
    char ')'
-   optional whitespace
+   whitespace
    return $ FunCall f s
    <?> "function call"
 
@@ -164,12 +166,18 @@ stExpr = do
     e <- expr
     return $ Expression e
 
+stPrint = do
+    reserved "print"
+    whitespace
+    es <- expr `sepBy` (symbol ",")
+    whitespace
+    return $ PRINT es
+    <?> "print"
+
 stBlock = do
-    char '{'
-    whitespace
+    symbol "{"
     ss <- many statement
-    char '}'
-    whitespace
+    symbol "}"
     return $ Block ss
     <?> "block of statements"
 
@@ -188,10 +196,23 @@ stWhile = do
     body <- (stBlock <|> stExpr)
     return $ WHILE cond body
 
+stFor = do
+    reserved "for"
+    (mInit,mCond,mStep) <- parens $ do
+       i <- optionMaybe expr
+       symbol ";"
+       c <- optionMaybe expr
+       symbol ";"
+       s <- optionMaybe expr
+       return (i,c,s)
+    return $ FOR mInit mCond mStep
+
 statement = try stIf
           <|> try stWhile
+          <|> try stFor
           <|> stBlock
           <|> stExpr
+          <|> stPrint
           <?> "statement"
 
 -- Top-level AWK constructs
