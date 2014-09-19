@@ -28,7 +28,18 @@ hawkBuiltinVars =
     , "SUBSEP"   -- subscript separator (default "\034")
     ]
 
-hawkConstructs = ["print","if","do","while","for","continue","break"]
+hawkConstructs =
+    [ "print"    -- prints comma-separated list of arguments, concatenated with OFS
+    , "if"       -- if-then[-else] statement
+    , "do"       -- do-while statement (body is executed at least once)
+    , "while"    -- while statement (body can be skipped on an initially failed test)
+    , "for"      -- for([init];[cond];[step])
+    , "continue" -- proceeds to the next iteration of the enclosing do/while/for loop
+    , "break"    -- breaks the execution of the enclosing do/while/for loop
+    , "next"     -- proceeds execution of the entire prograp to the next input record
+    , "exit"     -- causes the program to behave as the end of the input had occured;
+                 -- when called from any END{} context, aborts the execution.
+    ]
 
 -- Lexer
 lexer = P.makeTokenParser
@@ -216,6 +227,12 @@ stFor = do
 
 stBreak = reserved "break"    >> return BREAK
 stCont  = reserved "continue" >> return CONT
+stNext  = reserved "next" >> return NEXT
+
+stExit = do
+    reserved "exit"
+    mCode <- optionMaybe expr
+    return $ EXIT mCode
 
 statement = try stIf
           <|> try stDoWhile
@@ -223,6 +240,8 @@ statement = try stIf
           <|> try stFor
           <|> try stBreak
           <|> try stCont
+          <|> try stNext
+          <|> try stExit
           <|> stBlock
           <|> stExpr
           <|> stPrint

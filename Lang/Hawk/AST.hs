@@ -43,6 +43,8 @@ data Statement = Expression Expression
                | PRINT [Expression]
                | BREAK
                | CONT
+               | NEXT
+               | EXIT (Maybe Expression)
                  deriving (Eq, Show)
 
 data Pattern = BEGIN
