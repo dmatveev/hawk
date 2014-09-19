@@ -28,11 +28,13 @@ hawkBuiltinVars =
     , "SUBSEP"   -- subscript separator (default "\034")
     ]
 
+hawkConstructs = ["if","while"]
+
 -- Lexer
 lexer = P.makeTokenParser
         ( emptyDef
         { P.commentLine     = "#" 
-        , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars
+        , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars ++ hawkConstructs
         , P.reservedOpNames = ["*","/","+","-","%","^"
                               ,"*=","/=","+=","-=","%=","^="
                               ,"++","--"
@@ -180,7 +182,14 @@ stIf = do
        stBlock <|> stExpr
     return $ IF cond thenBranch elseBranch
 
+stWhile = do
+    reserved "while"
+    cond <- parens expr
+    body <- (stBlock <|> stExpr)
+    return $ WHILE cond body
+
 statement = try stIf
+          <|> try stWhile
           <|> stBlock
           <|> stExpr
           <?> "statement"

@@ -37,6 +37,7 @@ data Expression = Arith Op Expression Expression
 data Statement = Expression Expression
                | Block [Statement]
                | IF Expression Statement (Maybe Statement)
+               | WHILE Expression Statement
                  deriving (Eq, Show)
 
 data Pattern = BEGIN
