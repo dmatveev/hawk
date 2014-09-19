@@ -41,6 +41,7 @@ hawkConstructs =
                  -- when called from any END{} context, aborts the execution
     , "in"       -- array membership
     , "delete"   -- delete item from an array
+    , "return"   -- return control (and value, if any) from function
     ]
 
 -- Lexer
@@ -261,6 +262,11 @@ stExit = do
     mCode <- optionMaybe expr
     return $ EXIT mCode
 
+stReturn = do
+    reserved "return"
+    mVal <- optionMaybe expr
+    return $ RETURN mVal
+
 statement = try stIf
           <|> try stDoWhile
           <|> try stWhile
@@ -271,6 +277,7 @@ statement = try stIf
           <|> try stNext
           <|> try stExit
           <|> try stDelete
+          <|> try stReturn
           <|> stNop
           <|> stBlock
           <|> stExpr
@@ -279,6 +286,17 @@ statement = try stIf
 
 -- Top-level AWK constructs
 -- The AWK book does not give any names to pattern-statement pairs, so I did.
+toplevel = function <|> section
+
+function = do
+    reserved "function"
+    name <- identifier
+    params <- parens $ identifier `sepBy` (symbol ",")
+    symbol "{"
+    body <- statement
+    symbol "}"
+    return $ Function name params body
+
 section = do
     mp <- optionMaybe pattern
     whitespace
@@ -298,6 +316,6 @@ action = do
 
 awk = do
     whitespace
-    ss <- many section
+    ss <- many toplevel
     eof
     return ss

@@ -49,6 +49,7 @@ data Statement = Expression Expression
                | EXIT (Maybe Expression)
                | NOP
                | DELETE Expression
+               | RETURN (Maybe Expression)
                  deriving (Eq, Show)
 
 data Pattern = BEGIN
@@ -58,5 +59,6 @@ data Pattern = BEGIN
              | RANGE Pattern Pattern
              deriving (Eq, Show)
 
-data Section = Section (Maybe Pattern) (Maybe Statement)
-             deriving (Eq, Show)
+data TopLevel = Section (Maybe Pattern) (Maybe Statement)
+              | Function String [String] Statement
+              deriving (Eq, Show)
