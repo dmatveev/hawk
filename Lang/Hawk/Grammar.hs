@@ -11,14 +11,33 @@ import Text.Parsec.Expr
 
 import Lang.Hawk.AST
 
-hawkBuiltinVars = ["FS", "FNR"]
+hawkBuiltinVars =
+    [ "ARGC"     -- number of command-line arguments
+    , "ARGV"     -- array of command-line arguments
+    , "FILENAME" -- name of current input file
+    , "FNR"      -- record number in current file
+    , "FS"       -- controls the input field separator (default " ")
+    , "NF"       -- number of fields in the current record
+    , "NR"       -- number of records read so far
+    , "OFMT"     -- output format for numbers (default "%.6g")
+    , "OFS"      -- output field separator ("default " ")
+    , "ORS"      -- output record separator (default "\n")
+    , "RLENGTH"  -- length of string matched by `match` function
+    , "RS"       -- controls the input record separator (default "\n")
+    , "RSTART"   -- start of string matched by `match` function
+    , "SUBSEP"   -- subscript separator (default "\034")
+    ]
 
 -- Lexer
 lexer = P.makeTokenParser
         ( emptyDef
         { P.commentLine     = "#" 
         , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars
-        , P.reservedOpNames = ["*","/","+","-","&&","||","!",","]
+        , P.reservedOpNames = ["*","/","+","-","%","^"
+                              ,"*=","/=","+=","-=","%=","^="
+                              ,"++","--"
+                              ,"~","!~"
+                              ,"&&","||","!",","]
         })
 parens     = P.parens lexer
 natural    = P.natural lexer
@@ -31,7 +50,6 @@ whitespace = P.whiteSpace lexer
 
 -- Pattern grammar
 pattern = try range
-        <|> try compound
         <|> regexp
         <|> exprp
         <|> begin
@@ -51,29 +69,10 @@ exprp = do
      return $ EXPR e
      <?> "expression pattern"
 
-regexp = match <|> try exprMatch <|> exprNoMatch
-     <?> "regexp pattern"
-
-regex = do
-     char '/'
-     s <- manyTill anyChar (char '/')
-     return s
-
-match = do
+regexp = do
      s <- regex
-     return $ RE $ Match s
-
-exprMatch = do
-     e <- expr
-     reservedOp "~"
-     s <- regex
-     return $ RE $ ExprMatch e s
-
-exprNoMatch = do
-     e <- expr
-     reservedOp "!~"
-     s <- regex
-     return $ RE $ ExprNoMatch e s
+     return $ RE s
+     <?> "regexp"
 
 range = do
      pStart <- singlePattern
@@ -84,20 +83,6 @@ range = do
   where
     singlePattern = exprp <|> regexp
 
-compound = buildExpressionParser compTable compTerm
-           <?> "compound pattern"
-
-compTerm = try (parens regexp)
-         <|> (parens exprp)
-
-compAnd p1 p2 = COMP $ Combine "&&" p1 p2
-compOr  p1 p2 = COMP $ Combine "||" p1 p2
-compNeg p     = COMP $ Negate p
-
-compTable = [ [binary "&&" compAnd AssocLeft]
-            , [binary "||" compOr  AssocLeft]
-            , [prefix "!"  compNeg]
-            ]
 
 -- Expression grammar
 expr = buildExpressionParser table term
@@ -109,7 +94,15 @@ term = parens expr
 
 literal = (strlit >>= (return . Const . LitStr))
      <|> (natural >>= (return . Const . LitNumeric))
+     <|> (regex   >>= (return . Const . LitRE))
      <?> "literal"
+
+regex =  do
+     char '/'
+     s <- manyTill anyChar (char '/')
+     whitespace
+     return s
+     <?> "regex"
 
 fieldRef = do
    char '$'
@@ -137,15 +130,28 @@ builtInVar s = do
 
 builtInVars = choice $ map builtInVar hawkBuiltinVars
 
-table = [ [rel "<", rel "<=", rel "==", rel "!=", rel ">=", rel ">"]
-        , [arith "*", arith "/" ]
+-- Decreasing presedence order!
+-- The reversed version of The AWK Book's table 2-8.
+table = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
+          , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
+        , [arith "^"]
+        , [prefix "!" Not]
+        , [prefix "-" Neg]
+        , [arith "*", arith "/", arith "%" ]
         , [arith "+", arith "-" ]
+        , [binary ":" Concat AssocRight] -- explicit concatenation operator
+        , [rel "<", rel "<=", rel "==", rel "!=", rel ">=", rel ">"]
+        , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
+        , [binary "in" In AssocRight]
+        , [logic "&&"]
+        , [logic "||"]
         , [asgn "=", asgn "+=", asgn "-=", asgn "*=", asgn  "/=", asgn "%=", asgn "^="]
         ]
 
 rel   s = binary s (Relation s) AssocLeft
 arith s = binary s (Arith s) AssocLeft
 asgn  s = binary s (Assignment s) AssocRight
+logic s = binary s (Logic s) AssocRight
 
 binary  name fun assoc = Infix   (do {reservedOp name; return fun}) assoc
 prefix  name fun       = Prefix  (do {reservedOp name; return fun})

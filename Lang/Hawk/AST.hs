@@ -4,15 +4,15 @@ type Op = String
 
 data Literal = LitNumeric Integer
              | LitStr String
+             | LitRE String
              deriving (Eq, Show)
-
-data RegExp = Match String
-            | ExprMatch Expression String
-            | ExprNoMatch Expression String
-              deriving (Eq, Show)
 
 data Compound = Combine String Pattern Pattern
               | Negate Pattern
+              deriving (Eq, Show)
+
+data Notation = Pre
+              | Post
               deriving (Eq, Show)
 
 data Expression = Arith Op Expression Expression
@@ -21,16 +21,24 @@ data Expression = Arith Op Expression Expression
                | VariableRef String
                | BuiltInVar String
                | Assignment Op Expression Expression
+               | Incr Notation Expression
+               | Decr Notation Expression
                | Relation Op Expression Expression
                | FunCall String [Expression]
+               | Not Expression
+               | Neg Expression
+               | Concat Expression Expression
+               | In Expression Expression
+               | Logic Op Expression Expression
+               | Match Expression Expression
+               | NoMatch Expression Expression
                deriving (Eq, Show)
 
 data Pattern = BEGIN
              | END
              | EXPR Expression
-             | RE RegExp
+             | RE String
              | RANGE Pattern Pattern
-             | COMP Compound
              deriving (Eq, Show)
 
 data Section = Section (Maybe Pattern) (Maybe [Expression])
