@@ -19,6 +19,7 @@ data Expression = Arith Op Expression Expression
                 | Const Literal
                 | FieldRef Expression
                 | VariableRef String
+                | ArrayRef String Expression
                 | BuiltInVar String
                 | Assignment Op Expression Expression
                 | Incr Notation Expression
@@ -39,6 +40,7 @@ data Statement = Expression Expression
                | IF Expression Statement (Maybe Statement)
                | WHILE Expression Statement
                | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression) Statement
+               | FOREACH Expression Expression Statement
                | DO Statement Expression
                | PRINT [Expression]
                | BREAK
@@ -46,6 +48,7 @@ data Statement = Expression Expression
                | NEXT
                | EXIT (Maybe Expression)
                | NOP
+               | DELETE Expression
                  deriving (Eq, Show)
 
 data Pattern = BEGIN

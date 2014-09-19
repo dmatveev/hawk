@@ -38,7 +38,9 @@ hawkConstructs =
     , "break"    -- breaks the execution of the enclosing do/while/for loop
     , "next"     -- proceeds execution of the entire prograp to the next input record
     , "exit"     -- causes the program to behave as the end of the input had occured;
-                 -- when called from any END{} context, aborts the execution.
+                 -- when called from any END{} context, aborts the execution
+    , "in"       -- array membership
+    , "delete"   -- delete item from an array
     ]
 
 -- Lexer
@@ -103,7 +105,7 @@ expr = buildExpressionParser table term
 
 term = parens expr
      <|> try funcall
-     <|> literal <|> fieldRef <|> variableRef <|> builtInVars
+     <|> literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
 
 literal = stringLit <|> numericLit <|> regexLit
      <?> "literal"
@@ -129,6 +131,14 @@ variableRef = do
    s <- identifier
    return $ VariableRef s
    <?> "variable reference"
+
+arrayRef = do
+   n <- identifier
+   char '['
+   i <- expr
+   char ']'
+   whitespace
+   return $ ArrayRef n i
 
 funcall = do
    f <- identifier
@@ -226,6 +236,21 @@ stFor = do
     s <- statement
     return $ FOR mInit mCond mStep s
 
+stForEach = do
+    reserved "for"
+    (var,arr) <- parens $ do
+       v <- variableRef
+       reserved "in"
+       a <- variableRef
+       return (v,a)
+    s <- statement
+    return $ FOREACH var arr s
+
+stDelete = do
+    reserved "delete"
+    a <- arrayRef
+    return $ DELETE a
+
 stBreak = reserved "break"    >> return BREAK
 stCont  = reserved "continue" >> return CONT
 stNext  = reserved "next"     >> return NEXT
@@ -240,10 +265,12 @@ statement = try stIf
           <|> try stDoWhile
           <|> try stWhile
           <|> try stFor
+          <|> try stForEach
           <|> try stBreak
           <|> try stCont
           <|> try stNext
           <|> try stExit
+          <|> try stDelete
           <|> stNop
           <|> stBlock
           <|> stExpr
