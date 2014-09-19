@@ -38,13 +38,14 @@ data Statement = Expression Expression
                | Block [Statement]
                | IF Expression Statement (Maybe Statement)
                | WHILE Expression Statement
-               | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression)
+               | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression) Statement
                | DO Statement Expression
                | PRINT [Expression]
                | BREAK
                | CONT
                | NEXT
                | EXIT (Maybe Expression)
+               | NOP
                  deriving (Eq, Show)
 
 data Pattern = BEGIN

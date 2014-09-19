@@ -223,11 +223,13 @@ stFor = do
        symbol ";"
        s <- optionMaybe expr
        return (i,c,s)
-    return $ FOR mInit mCond mStep
+    s <- statement
+    return $ FOR mInit mCond mStep s
 
 stBreak = reserved "break"    >> return BREAK
 stCont  = reserved "continue" >> return CONT
-stNext  = reserved "next" >> return NEXT
+stNext  = reserved "next"     >> return NEXT
+stNop   = symbol   ";"        >> return NOP
 
 stExit = do
     reserved "exit"
@@ -242,6 +244,7 @@ statement = try stIf
           <|> try stCont
           <|> try stNext
           <|> try stExit
+          <|> stNop
           <|> stBlock
           <|> stExpr
           <|> stPrint
@@ -267,6 +270,7 @@ action = do
     <?> "action"
 
 awk = do
+    whitespace
     ss <- many section
     eof
     return ss
