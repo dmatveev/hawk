@@ -8,3 +8,8 @@
       print $0, "cool!"
    }
 }
+$1 == 42 {
+   for (;;) {
+      # Infinite loop!
+   }
+}

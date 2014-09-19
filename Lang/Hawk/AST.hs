@@ -39,7 +39,10 @@ data Statement = Expression Expression
                | IF Expression Statement (Maybe Statement)
                | WHILE Expression Statement
                | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression)
+               | DO Statement Expression
                | PRINT [Expression]
+               | BREAK
+               | CONT
                  deriving (Eq, Show)
 
 data Pattern = BEGIN

@@ -28,7 +28,7 @@ hawkBuiltinVars =
     , "SUBSEP"   -- subscript separator (default "\034")
     ]
 
-hawkConstructs = ["print","if","while","for"]
+hawkConstructs = ["print","if","do","while","for","continue","break"]
 
 -- Lexer
 lexer = P.makeTokenParser
@@ -184,10 +184,10 @@ stBlock = do
 stIf = do
     reserved "if"
     cond <- parens expr
-    thenBranch <- (stBlock <|> stExpr)
+    thenBranch <- statement
     elseBranch <- optionMaybe $ do
        reserved "else"
-       stBlock <|> stExpr
+       statement
     return $ IF cond thenBranch elseBranch
 
 stWhile = do
@@ -195,6 +195,13 @@ stWhile = do
     cond <- parens expr
     body <- (stBlock <|> stExpr)
     return $ WHILE cond body
+
+stDoWhile = do
+    reserved "do"
+    body <- (stBlock <|> stExpr)
+    reserved "while"
+    cond <- parens expr
+    return $ DO body cond
 
 stFor = do
     reserved "for"
@@ -207,9 +214,15 @@ stFor = do
        return (i,c,s)
     return $ FOR mInit mCond mStep
 
+stBreak = reserved "break"    >> return BREAK
+stCont  = reserved "continue" >> return CONT
+
 statement = try stIf
+          <|> try stDoWhile
           <|> try stWhile
           <|> try stFor
+          <|> try stBreak
+          <|> try stCont
           <|> stBlock
           <|> stExpr
           <|> stPrint
