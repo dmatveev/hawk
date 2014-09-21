@@ -62,3 +62,5 @@ data Pattern = BEGIN
 data TopLevel = Section (Maybe Pattern) (Maybe Statement)
               | Function String [String] Statement
               deriving (Eq, Show)
+
+type AwkSource = [TopLevel]
