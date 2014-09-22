@@ -126,8 +126,10 @@ eval (VariableRef s) = do
 
 eval (ArrayRef _ _) = unsup "Array references"
 eval (BuiltInVar _) = unsup "Built-in variables"
-eval (Incr _ _)     = unsup "Increments"
-eval (Decr _ _)     = unsup "Decrements"
+eval (Incr n f@(FieldRef e))    = incrField n f
+eval (Incr n v@(VariableRef s)) = incrVar n v
+eval (Decr n f@(FieldRef e))    = decrField n f
+eval (Decr n v@(VariableRef s)) = decrVar n v
 
 eval (Relation op le re) = do
      l <- liftM coerceToDouble $ eval le
@@ -165,21 +167,51 @@ eval (Assignment op p v) = do
        (FieldRef ref)     -> assignToField op ref  val
        (VariableRef name) -> assignToVar   op name val
        otherwise -> fail "Only to-field and to-variable assignments are supported"
-     eval p
+
+calcNewValue oldVal op arg =
+     case op of
+        "="  -> arg
+        "+=" -> VDouble $ coerceToDouble oldVal + coerceToDouble arg
+        "-=" -> VDouble $ coerceToDouble oldVal - coerceToDouble arg
+        "*=" -> VDouble $ coerceToDouble oldVal * coerceToDouble arg
+        "/=" -> VDouble $ coerceToDouble oldVal / coerceToDouble arg
+        otherwise -> undefined
 
 assignToField op ref val = do
-      i <- liftM coerceToInt $ eval ref
-      oldFields <- gets hcFields
-      let newFields = Map.insert i val oldFields
-      modify (\s -> s { hcFields = newFields })
-      -- TODO: reconstruct $0
-      return ()
+     i <- liftM coerceToInt $ eval ref
+     oldFields <- gets hcFields
+     let newValue  = calcNewValue (oldFields Map.! i) op val
+         newFields = Map.insert i newValue oldFields
+     modify (\s -> s { hcFields = newFields })
+     -- TODO: reconstruct $0
+     return newValue 
 
 assignToVar op name val = do
-      oldVars <- gets hcVars
-      let newVars = Map.insert name val oldVars
-      modify (\s -> s { hcVars = newVars })
-      return ()
+     oldVars <- gets hcVars
+     let newValue = calcNewValue (oldVars Map.! name) op val
+         newVars  = Map.insert name newValue oldVars
+     modify (\s -> s { hcVars = newVars })
+     return newValue
+
+incrField n fld@(FieldRef e) = do
+   oldVal <- eval fld
+   newVal <- assignToField "+=" e (VDouble 1.0)
+   return (if n == Post then oldVal else newVal)
+
+decrField n fld@(FieldRef e) = do
+   oldVal <- eval fld
+   newVal <- assignToField "-=" e (VDouble 1.0)
+   return (if n == Post then oldVal else newVal)
+
+incrVar n var@(VariableRef s) = do
+   oldVal <- eval var
+   newVal <- assignToVar "+=" s (VDouble 1.0)
+   return (if n == Post then oldVal else newVal)
+
+decrVar n var@(VariableRef s) = do
+   oldVal <- eval var
+   newVal <- assignToVar "-=" s (VDouble 1.0)
+   return (if n == Post then oldVal else newVal)
 
 -- Coercions and conversions
 coerceToBool :: Value -> Bool

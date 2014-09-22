@@ -5,15 +5,10 @@ type Op = String
 data Literal = LitNumeric Integer
              | LitStr String
              | LitRE String
-             deriving (Eq, Show)
+               deriving (Eq, Show)
 
-data Compound = Combine String Pattern Pattern
-              | Negate Pattern
-              deriving (Eq, Show)
-
-data Notation = Pre
-              | Post
-              deriving (Eq, Show)
+data Notation = Pre | Post
+                deriving (Eq, Show)
 
 data Expression = Arith Op Expression Expression
                 | Const Literal
@@ -33,7 +28,7 @@ data Expression = Arith Op Expression Expression
                 | Logic Op Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
-                deriving (Eq, Show)
+                  deriving (Eq, Show)
 
 data Statement = Expression Expression
                | Block [Statement]
@@ -57,10 +52,10 @@ data Pattern = BEGIN
              | EXPR Expression
              | RE String
              | RANGE Pattern Pattern
-             deriving (Eq, Show)
+               deriving (Eq, Show)
 
 data TopLevel = Section (Maybe Pattern) (Maybe Statement)
               | Function String [String] Statement
-              deriving (Eq, Show)
+                deriving (Eq, Show)
 
 type AwkSource = [TopLevel]
