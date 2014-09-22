@@ -144,8 +144,14 @@ eval (Relation op le re) = do
           otherwise -> fail $ "Unsupported cmp operator " ++ op
   where test b = if b then 1 else 0
 
-eval (Not _)        = unsup "Logical negations"
-eval (Neg _)        = unsup "Negations"
+eval (Not e) = do
+     b <- liftM coerceToBool $ eval e
+     return $ VDouble (if b then 0.0 else 1.0)
+
+eval (Neg e) = do
+     d <- liftM coerceToDouble $ eval e
+     return $ VDouble (- d)
+
 eval (Concat _ _ )  = unsup "Concatenations"
 eval (In _ _)       = unsup "Array membership tests"
 
