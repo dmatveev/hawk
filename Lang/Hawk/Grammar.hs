@@ -50,7 +50,7 @@ lexer = P.makeTokenParser
         { P.commentLine     = "#" 
         , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars ++ hawkConstructs
         , P.reservedOpNames = ["*","/","+","-","%","^"
-                              ,"*=","/=","+=","-=","%=","^="
+                              ,"=","*=","/=","+=","-=","%=","^="
                               ,"++","--"
                               ,"~","!~"
                               ,"&&","||","!",",",";"]
@@ -124,7 +124,7 @@ regex =  do
 
 fieldRef = do
    char '$'
-   e <- (numericLit <|> variableRef)
+   e <- (numericLit <|> variableRef <|> parens expr)
    return $ FieldRef e
    <?> "data field reference"
 

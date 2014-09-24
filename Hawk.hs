@@ -21,6 +21,8 @@ runHawk progFile inputFile = do
     intMain :: Interpreter ()
     intMain = do
       input <- liftIO $ readFile inputFile
+      assignToBVar "=" "FILENAME" (VString inputFile)
+      assignToBVar "=" "FNR"      (VDouble 0)
       initialize
       forM_ (lines input) processLine
       finalize
