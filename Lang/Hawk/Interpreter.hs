@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
 
 module Lang.Hawk.Interpreter where
 
@@ -27,11 +27,12 @@ emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
              { hcCode     = s
              , hcFields   = Map.empty
-             , hcVars     = Map.empty
+             , hcVars     = Map.fromList initialVars
              , hcBVars    = Map.fromList initialBuiltInVars
              , hcThisLine = ""
              }
-  where initialBuiltInVars = [ ("FNR", VDouble 0)
+  where initialVars = map (, VString "") $ vars s 
+        initialBuiltInVars = [ ("FNR", VDouble 0)
                              , ("NR",  VDouble 0)
                              , ("NF",  VDouble 0)
                              , ("OFS", VString " ")
@@ -261,12 +262,14 @@ coerceToBool (VDouble 0)  = False
 coerceToBool _            = True
 
 coerceToDouble :: Value -> Double
-coerceToDouble (VDouble d) = d
-coerceToDouble (VString s) = read s
+coerceToDouble (VDouble d)  = d
+coerceToDouble (VString "") = 0.0
+coerceToDouble (VString s)  = read s
 
 coerceToInt :: Value -> Int
-coerceToInt (VDouble d) = truncate d
-coerceToInt (VString s) = read s
+coerceToInt (VDouble d)  = truncate d
+coerceToInt (VString "") = 0
+coerceToInt (VString s)  = read s
 
 toString :: Value -> String
 toString (VString s) = s
