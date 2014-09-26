@@ -66,46 +66,65 @@ vars ts = concat $ map vars' ts
     where vars' (Section mp ms)  = maybe [] varsFromPattern mp ++ maybe [] varsFromStmt ms
           vars' (Function _ _ s) = varsFromStmt s
 
+visitPattern :: (Pattern -> [a]) -> Pattern -> [a]
+visitPattern f p = f p ++ case p of
+    (RANGE p1 p2) -> f p1 ++ f p2
+    otherwise     -> []
+
+visitPatternExpr :: (Expression -> [a]) -> Pattern -> [a]
+visitPatternExpr f = visitPattern f'
+  where f' (EXPR e) = f e
+        f' _        = []
+
+visitStmt :: (Statement -> [a]) -> Statement -> [a]
+visitStmt f s = f s ++ case s of
+    (Block ss)       -> concat $ map f ss
+    (IF c t me)      -> f t ++ maybe [] f me
+    (WHILE e s)      -> f s
+    (FOR mi mc ms s) -> f s
+    (FOREACH e a s)  -> f s
+    (DO s e)         -> f s
+    otherwise        -> []
+
+visitStmtExpr :: (Expression -> [a]) -> Statement -> [a]
+visitStmtExpr f = visitStmt f'
+  where f' (Expression e)   = f e
+        f' (IF c _ _)       = f c
+        f' (WHILE e _)      = f e
+        f' (FOR mi mc ms _) = concat $ map (maybe [] f) [mi, mc, ms]
+        f' (FOREACH e a _)  = f e ++ f a
+        f' (DO _ e)         = f e
+        f' (PRINT es)       = concat $ map f es
+        f' (EXIT me)        = maybe [] f me
+        f' (DELETE e)       = f e
+        f' (RETURN me)      = maybe [] f me
+        f' _                = []
+
+visitExpr :: (Expression -> [a]) -> Expression -> [a]
+visitExpr f e = f e ++ case e of
+   (Arith _ l r)      -> f l ++ f r
+   (Assignment _ l r) -> f l ++ f r
+   (Incr _ ex)        -> f ex
+   (Decr _ ex)        -> f ex
+   (Relation _ l r)   -> f l ++ f r
+   (FunCall _ es)     -> concat $ map f es
+   (Not ex)           -> f ex
+   (Neg ex)           -> f ex
+   (Concat l r)       -> f l ++ f r
+   (In l r)           -> f l ++ f r
+   (Logic _ l r)      -> f l ++ f r
+   (Match l r)        -> f l ++ f r
+   (NoMatch l r)      -> f l ++ f r
+   otherwise          -> []
+
+
 varsFromPattern :: Pattern -> [String]
-varsFromPattern BEGIN           = []
-varsFromPattern END             = []
-varsFromPattern (EXPR e)        = varsFromExpr e
-varsFromPattern (RE _)          = []
-varsFromPattern (RANGE p1 p2)   = varsFromPattern p1 ++ varsFromPattern p2
+varsFromPattern = visitPatternExpr varsFromExpr
 
 varsFromStmt :: Statement -> [String]
-varsFromStmt (Expression e)     = varsFromExpr e
-varsFromStmt (Block ss)         = concat $ map varsFromStmt ss
-varsFromStmt (IF c t me)        = varsFromExpr c ++ varsFromStmt t ++ maybe [] varsFromStmt me
-varsFromStmt (WHILE e s)        = varsFromExpr e ++ varsFromStmt s
-varsFromStmt (FOR mi mc ms s)   = varsFromStmt s
-                                  ++ (concat $ map (maybe [] varsFromExpr) [mi, mc, ms])
-varsFromStmt (FOREACH e a s)    = varsFromExpr e ++ varsFromExpr a ++ varsFromStmt s
-varsFromStmt (DO s e)           = varsFromStmt s ++ varsFromExpr e
-varsFromStmt (PRINT es)         = concat $ map varsFromExpr es
-varsFromStmt (EXIT me)          = maybe [] varsFromExpr me
-varsFromStmt (DELETE e)         = varsFromExpr e
-varsFromStmt (RETURN me)        = maybe [] varsFromExpr me
-varsFromStmt BREAK              = []
-varsFromStmt CONT               = []
-varsFromStmt NEXT               = []
-varsFromStmt NOP                = []
+varsFromStmt = visitStmtExpr varsFromExpr
 
 varsFromExpr :: Expression -> [String]
-varsFromExpr (Arith _ l r)      = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (Const _)          = []
-varsFromExpr (FieldRef _)       = []
-varsFromExpr (VariableRef s)    = [s]
-varsFromExpr (BuiltInVar _)     = []
-varsFromExpr (Assignment _ l r) = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (Incr _ e)         = varsFromExpr e
-varsFromExpr (Decr _ e)         = varsFromExpr e
-varsFromExpr (Relation _ l r)   = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (FunCall _ es)     = concat $ map varsFromExpr es
-varsFromExpr (Not e)            = varsFromExpr e
-varsFromExpr (Neg e)            = varsFromExpr e
-varsFromExpr (Concat l r)       = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (In l r)           = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (Logic _ l r)      = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (Match l r)        = varsFromExpr l ++ varsFromExpr r
-varsFromExpr (NoMatch l r)      = varsFromExpr l ++ varsFromExpr r
+varsFromExpr = visitExpr f
+   where f (VariableRef s) = [s]
+         f _               = []

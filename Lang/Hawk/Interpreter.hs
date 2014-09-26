@@ -5,6 +5,8 @@ module Lang.Hawk.Interpreter where
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 
+import GHC.Float (floatToDigits)
+
 import Control.Monad.State.Strict
 import Control.Monad.Trans
 import qualified Data.Map.Strict as Map
@@ -273,8 +275,11 @@ coerceToInt (VString s)  = read s
 
 toString :: Value -> String
 toString (VString s) = s
-toString (VDouble d) = show d
-
+toString (VDouble d) =
+    let (rs,p) = floatToDigits 10 d
+    in if length rs == p
+       then concat $ map show rs
+       else show d
 
 -- Execute a statement
 exec :: Statement -> Interpreter ()
