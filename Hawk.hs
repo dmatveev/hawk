@@ -1,6 +1,5 @@
 import Control.Monad (forM_)
 import Control.Monad.Trans
-import Data.IORef
 import System.Environment (getArgs)
 import Text.Parsec (parse)
 
@@ -14,8 +13,7 @@ runHawk progFile inputFile = do
   case ast of
     (Left e)  -> putStrLn $ show e
     (Right a) -> do
-        contextRef <- newIORef (emptyContext a)
-        execInterpreter intMain (emptyContext a)
+        runInterpreter intMain (emptyContext a)
         return ()
   where
     intMain :: Interpreter ()

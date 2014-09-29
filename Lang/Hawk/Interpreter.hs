@@ -8,6 +8,7 @@ import Data.Maybe (fromJust)
 import GHC.Float (floatToDigits)
 
 import Control.Monad.State.Strict
+import Control.Monad.Cont
 import Control.Monad.Trans
 import qualified Data.Map.Strict as Map
 
@@ -41,15 +42,13 @@ emptyContext s = HawkContext
                              , ("ORS", VString "\n")
                              ]
 
-newtype Interpreter a = Interpreter (StateT HawkContext IO a)
-                        deriving (Monad, MonadIO, MonadState HawkContext)
+newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
+                        deriving (Monad, MonadIO, MonadCont, MonadState HawkContext)
 
 
-runInterpreter :: Interpreter a -> HawkContext -> IO (a, HawkContext)
-runInterpreter (Interpreter stt) c = runStateT stt c
+runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
+runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
 
-execInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
-execInterpreter i c = liftM snd $ runInterpreter i c
 
 -- Execute all BEGIN actions, if any
 initialize :: Interpreter ()
@@ -58,7 +57,7 @@ initialize = do
     forM_ actions $ \(Section _ ms) -> do
       case ms of
         Nothing  -> return ()
-        (Just s) -> exec s
+        (Just s) -> exec emptyKBlock s
   where isBegin (Section (Just BEGIN) _) = return True
         isBegin _                        = return False
 
@@ -69,7 +68,7 @@ finalize = do
     forM_ actions $ \(Section _ ms) -> do
       case ms of
         Nothing  -> return ()
-        (Just s) -> exec s
+        (Just s) -> exec emptyKBlock s
   where isEnd (Section (Just END) _) = return True
         isEnd _                      = return False
 
@@ -91,7 +90,7 @@ processLine s = do
     assignToBVar "+=" "FNR" (VDouble 1)
     -- find matching actions for this line and execute them
     actions <- (gets hcCode >>= filterM matches)
-    forM_ actions $ \(Section _ ms) -> exec $
+    forM_ actions $ \(Section _ ms) -> exec emptyKBlock $
        case ms of
          Nothing  -> (PRINT [])
          (Just s) -> s
@@ -282,38 +281,63 @@ toString (VDouble d) =
        else show d
 
 -- Execute a statement
-exec :: Statement -> Interpreter ()
-exec (Expression e) = eval e >> return ()
-exec (Block es)     = mapM_ exec es
+data KBlock = KBlock { kNext  :: (() -> Interpreter ())
+                     , kExit  :: (() -> Interpreter ())
+                     , kRet   :: (() -> Interpreter ())
+                     , kCont  :: (() -> Interpreter ())
+                     , kBreak :: (() -> Interpreter ())
+                     }
 
-exec (IF c t me)    = do
+emptyKBlock :: KBlock
+emptyKBlock = KBlock { kNext  = return
+                     , kExit  = return
+                     , kRet   = return
+                     , kCont  = return
+                     , kBreak = return
+                     }
+
+exec :: KBlock -> Statement -> Interpreter ()
+exec _ (Expression e) = eval e >> return ()
+exec k (Block es)     = mapM_ (exec k) es
+
+exec k (IF c t me)    = do
      b <- liftM coerceToBool $ eval c
      if b
-     then exec t
+     then exec k t
      else case me of
           Nothing -> return ()
-          Just es -> exec es
+          Just es -> exec k es
 
-exec w@(WHILE c s) = do
-     b <- liftM coerceToBool $ eval c
-     when b $ do
-       exec s
-       exec w
+exec k w@(WHILE c s) = callCC $ \br -> do
+     let k' = k {kBreak = br, kCont = \_ -> nextWhile k'}
+         nextWhile kk = do
+            b <- liftM coerceToBool $ eval c
+            when b $ (exec kk s >> nextWhile kk)
+            br ()
+     nextWhile k'
 
-exec (FOR i c st s) = eval (fromJust i) >> execFor c st s
-  where execFor c st s = do -- TODO: optional expressoins
-          b <- liftM coerceToBool $ eval (fromJust c)
-          when b $ do
-            exec s
-            eval (fromJust st)
-            execFor c st s
+exec k (FOR i c st s) = callCC $ \br -> do
+    let k' = k {kBreak = br, kCont = \_ -> nextFor k'}
+        -- TODO: optional expressoins
+        initFor    = eval (fromJust i)
+        nextFor kk = eval (fromJust st) >> execFor kk
+        execFor kk = do
+           b <- liftM coerceToBool $ eval (fromJust c)
+           when b $ exec kk s >> nextFor kk
+           br ()
+    initFor
+    execFor k'
 
-exec d@(DO s c) = do
-     exec s
-     b <- liftM coerceToBool $ eval c
-     when b $ exec d
+exec k d@(DO s c) = callCC $ \br -> do
+     let k' = k {kBreak = br, kCont = \_ -> nextDo k'}
+         nextDo kk = do
+            exec kk s
+            b <- liftM coerceToBool $ eval c
+            when b $ nextDo kk
+            br ()
+     nextDo k'
 
-exec (PRINT es) = do
+exec _ (PRINT es) = do
    ofs <- liftM toString $ eval (BuiltInVar "OFS")
    ors <- liftM toString $ eval (BuiltInVar "ORS")
    str <- case es of
@@ -321,10 +345,10 @@ exec (PRINT es) = do
       otherwise -> liftM (intercalate ofs . map toString) $ mapM eval es
    liftIO $ putStr $ str ++ ors
 
-exec (BREAK)    = unsup "`break` statements"
-exec (CONT)     = unsup "`continue` statements"
-exec (NEXT)     = unsup "`next` statements"
-exec (EXIT _)   = unsup "`exit` statements"
-exec (NOP)      = return ()
-exec (DELETE _) = unsup "`delete` statements"
-exec (RETURN _) = unsup "`return` statements"
+exec k (BREAK)    = (kBreak k) ()
+exec k (CONT)     = (kCont  k) ()
+exec k (NEXT)     = (kNext  k) ()
+exec k (EXIT _)   = (kExit  k) () -- TODO argument
+exec k (RETURN _) = (kRet   k) () -- TODO argument
+exec _ (NOP)      = return ()
+exec _ (DELETE _) = unsup "`delete` statements"
