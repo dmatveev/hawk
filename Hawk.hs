@@ -12,18 +12,8 @@ runHawk progFile inputFile = do
   let ast = parse awk progFile source
   case ast of
     (Left e)  -> putStrLn $ show e
-    (Right a) -> do
-        runInterpreter intMain (emptyContext a)
-        return ()
-  where
-    intMain :: Interpreter ()
-    intMain = do
-      input <- liftIO $ readFile inputFile
-      assignToBVar "=" "FILENAME" (VString inputFile)
-      assignToBVar "=" "FNR"      (VDouble 0)
-      initialize
-      forM_ (lines input) processLine
-      finalize
+    (Right a) -> do runInterpreter (intMain inputFile) (emptyContext a)
+                    return ()
 
 main :: IO ()
 main = do
