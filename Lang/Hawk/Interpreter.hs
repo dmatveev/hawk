@@ -1,7 +1,8 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, OverloadedStrings #-}
 
 module Lang.Hawk.Interpreter where
 
+import qualified Data.ByteString.Char8 as B
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 
@@ -14,8 +15,8 @@ import qualified Data.Map.Strict as Map
 
 import Lang.Hawk.AST
 
-data Value = VString String
-           | VDouble Double
+data Value = VString !B.ByteString
+           | VDouble !Double
              deriving (Eq, Show)
 
 data HawkContext = HawkContext
@@ -23,7 +24,7 @@ data HawkContext = HawkContext
                  , hcFields   :: !(Map.Map Int Value)
                  , hcVars     :: !(Map.Map String Value)
                  , hcBVars    :: !(Map.Map String Value)
-                 , hcThisLine :: !String
+                 , hcThisLine :: !B.ByteString
                  }
 
 emptyContext :: AwkSource -> HawkContext
@@ -76,32 +77,32 @@ finalize = do
 -- This is actually an entry point to the Interpreter.
 intMain :: String -> Interpreter ()
 intMain inputFile = do
-    input <- liftIO $ readFile inputFile
-    assignToBVar "=" "FILENAME" (VString inputFile)
+    input <- liftIO $ B.readFile inputFile
+    assignToBVar "=" "FILENAME" (VString $ B.pack inputFile)
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
        let kBlock = emptyKBlock {kExit = ex}
-       forM_ (lines input) $ processLine kBlock
+       forM_ (B.lines input) $ processLine kBlock
        ex ()
     finalize
 
 
-processLines :: KBlock -> [String] -> Interpreter ()
-processLines _ [] = return ()
-processLines k (x:xs) = do
-    let k' = k { kNext = \_ -> nextLines k' }
-        nextLines kk = processLines kk xs >> (kExit k) ()
-    processLine k' x
-    nextLines k'
+-- processLines :: KBlock -> [String] -> Interpreter ()
+-- processLines _ [] = return ()
+-- processLines k (x:xs) = do
+--     let k' = k { kNext = \_ -> nextLines k' }
+--         nextLines kk = processLines kk xs >> (kExit k) ()
+--     processLine k' x
+--     nextLines k'
 
 
 -- processLine takes a new (next) line from input stream, prepares
 -- the execution context, and evaluates the awk code with this context.
-processLine :: KBlock -> String -> Interpreter ()
+processLine :: KBlock -> B.ByteString -> Interpreter ()
 processLine k s = do
     oldContext <- get
-    let thisFields = map VString $ words s
+    let thisFields = map VString $ B.words s
         thisFldMap = Map.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s
                                  , hcFields   = thisFldMap
@@ -149,7 +150,7 @@ eval (Arith op le re) = do
           otherwise -> fail $ "Unsupported arith operator " ++ op
 
 eval (Const (LitNumeric i)) = return $! VDouble (fromInteger i)
-eval (Const (LitStr s))     = return $! VString s
+eval (Const (LitStr s))     = return $! VString $ B.pack s
 eval (Const _)              = fail "Unsupported literal type"
 
 eval (FieldRef e) = do
@@ -220,10 +221,10 @@ eval (Assignment op p v) = do
 calcNewValue oldVal op arg =
      case op of
         "="  -> arg
-        "+=" -> VDouble $! coerceToDouble oldVal + coerceToDouble arg
-        "-=" -> VDouble $! coerceToDouble oldVal - coerceToDouble arg
-        "*=" -> VDouble $! coerceToDouble oldVal * coerceToDouble arg
-        "/=" -> VDouble $! coerceToDouble oldVal / coerceToDouble arg
+        "+=" -> VDouble $ coerceToDouble oldVal + coerceToDouble arg
+        "-=" -> VDouble $ coerceToDouble oldVal - coerceToDouble arg
+        "*=" -> VDouble $ coerceToDouble oldVal * coerceToDouble arg
+        "/=" -> VDouble $ coerceToDouble oldVal / coerceToDouble arg
         otherwise -> undefined
 
 assignToField op ref val = do
@@ -238,7 +239,7 @@ assignToField op ref val = do
 reconstructThisLine = do
      thisFields <- gets (Map.toList . hcFields)
      ofs        <- liftM toString $ eval (BuiltInVar "OFS")
-     let line = intercalate ofs $ map (toString . snd) thisFields
+     let line = B.intercalate ofs $ map (toString . snd) thisFields
      modify (\s -> s { hcThisLine = line })
      return ()
 
@@ -287,20 +288,20 @@ coerceToBool _            = True
 coerceToDouble :: Value -> Double
 coerceToDouble (VDouble d)  = d
 coerceToDouble (VString "") = 0.0
-coerceToDouble (VString s)  = read s
+coerceToDouble (VString s)  = read $ B.unpack s
 
 coerceToInt :: Value -> Int
 coerceToInt (VDouble d)  = truncate d
 coerceToInt (VString "") = 0
-coerceToInt (VString s)  = read s
+coerceToInt (VString s)  = read $ B.unpack s
 
-toString :: Value -> String
+toString :: Value -> B.ByteString
 toString (VString s) = s
 toString (VDouble d) =
     let (rs,p) = floatToDigits 10 d
     in if length rs == p
-       then concat $ map show rs
-       else show d
+       then B.pack $ concat $ map show rs
+       else B.pack $ show d
 
 -- Execute a statement
 data KBlock = KBlock { kNext  :: (() -> Interpreter ())
@@ -364,8 +365,8 @@ exec _ (PRINT es) = do
    ors <- liftM toString $! eval (BuiltInVar "ORS")
    str <- case es of
       []        -> gets hcThisLine
-      otherwise -> liftM (intercalate ofs . map toString) $ mapM eval es
-   liftIO $ putStr $ str ++ ors
+      otherwise -> liftM (B.intercalate ofs . map toString) $ mapM eval es
+   liftIO $ B.putStr $ B.append str ors
 
 exec k (BREAK)    = (kBreak k) ()
 exec k (CONT)     = (kCont  k) ()
