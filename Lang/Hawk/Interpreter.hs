@@ -19,21 +19,21 @@ data Value = VString String
              deriving (Eq, Show)
 
 data HawkContext = HawkContext
-                 { hcCode     :: AwkSource
-                 , hcFields   :: Map.Map Int Value
-                 , hcVars     :: Map.Map String Value
-                 , hcBVars    :: Map.Map String Value
-                 , hcThisLine :: String
-                 } deriving (Eq, Show)
+                 { hcCode     :: !AwkSource
+                 , hcFields   :: !(Map.Map Int Value)
+                 , hcVars     :: !(Map.Map String Value)
+                 , hcBVars    :: !(Map.Map String Value)
+                 , hcThisLine :: !String
+                 }
 
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
-             { hcCode     = s
-             , hcFields   = Map.empty
-             , hcVars     = Map.fromList initialVars
-             , hcBVars    = Map.fromList initialBuiltInVars
-             , hcThisLine = ""
-             }
+                 { hcCode     = s
+                 , hcFields   = Map.empty
+                 , hcVars     = Map.fromList initialVars
+                 , hcBVars    = Map.fromList initialBuiltInVars
+                 , hcThisLine = ""
+                 }
   where initialVars = map (, VString "") $ vars s 
         initialBuiltInVars = [ ("FNR", VDouble 0)
                              , ("NR",  VDouble 0)
@@ -81,8 +81,9 @@ intMain inputFile = do
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
-      processLines (emptyKBlock {kExit = ex}) $ lines input
-      ex ()
+       let kBlock = emptyKBlock {kExit = ex}
+       forM_ (lines input) $ processLine kBlock
+       ex ()
     finalize
 
 
@@ -105,7 +106,7 @@ processLine k s = do
         thisContext = oldContext { hcThisLine = s
                                  , hcFields   = thisFldMap
                                  }
-    put thisContext
+    put $! thisContext
     assignToBVar "="  "NF"  (VDouble $ fromIntegral $ length thisFields)
     assignToBVar "+=" "NR"  (VDouble 1)
     assignToBVar "+=" "FNR" (VDouble 1)
@@ -128,7 +129,7 @@ matches (Section (Just p) _) = patternMatches p
 patternMatches :: Pattern -> Interpreter Bool
 patternMatches BEGIN    = return False
 patternMatches END      = return False
-patternMatches (EXPR e) = liftM coerceToBool $ eval e
+patternMatches (EXPR e) = liftM coerceToBool $! eval e
 patternMatches _        = return False -- Not supported yet
 
 unsup s = fail $ s ++ " are not yet supported"
@@ -138,17 +139,17 @@ unsup s = fail $ s ++ " are not yet supported"
 eval :: Expression -> Interpreter Value
 
 eval (Arith op le re) = do
-     l <- liftM coerceToDouble $ eval le
-     r <- liftM coerceToDouble $ eval re
+     l <- liftM coerceToDouble $! eval le
+     r <- liftM coerceToDouble $! eval re
      case op of
-          "*" -> return $ VDouble (l * r)
-          "/" -> return $ VDouble (l / r)
-          "+" -> return $ VDouble (l + r)
-          "-" -> return $ VDouble (l - r)
+          "*" -> return $! VDouble (l * r)
+          "/" -> return $! VDouble (l / r)
+          "+" -> return $! VDouble (l + r)
+          "-" -> return $! VDouble (l - r)
           otherwise -> fail $ "Unsupported arith operator " ++ op
 
-eval (Const (LitNumeric i)) = return $ VDouble (fromInteger i)
-eval (Const (LitStr s))     = return $ VString s
+eval (Const (LitNumeric i)) = return $! VDouble (fromInteger i)
+eval (Const (LitStr s))     = return $! VString s
 eval (Const _)              = fail "Unsupported literal type"
 
 eval (FieldRef e) = do
@@ -156,15 +157,15 @@ eval (FieldRef e) = do
      if i == 0
      then gets hcThisLine >>= (return . VString)
      else do fs <- gets hcFields
-             return $ fs Map.! i
+             return $! fs Map.! i
 
 eval (VariableRef s) = do
      vs <- gets hcVars
-     return $ vs Map.! s
+     return $! vs Map.! s
 
 eval (BuiltInVar s) = do
      bvs <- gets hcBVars
-     return $ bvs Map.! s
+     return $! bvs Map.! s
 
 eval (ArrayRef _ _) = unsup "Array references"
 
@@ -174,35 +175,35 @@ eval (Decr n f@(FieldRef e))    = decrField n f
 eval (Decr n v@(VariableRef s)) = decrVar n v
 
 eval (Relation op le re) = do
-     l <- liftM coerceToDouble $ eval le
-     r <- liftM coerceToDouble $ eval re
+     l <- liftM coerceToDouble $! eval le
+     r <- liftM coerceToDouble $! eval re
      case op of -- for now, only numeric values
-          "==" -> return $ VDouble $ test (l == r)
-          "!=" -> return $ VDouble $ test (l /= r)
-          ">"  -> return $ VDouble $ test (l >  r)
-          ">=" -> return $ VDouble $ test (l >= r)
-          "<"  -> return $ VDouble $ test (l <  r)
-          "<=" -> return $ VDouble $ test (l <= r)
+          "==" -> return $! VDouble $ test (l == r)
+          "!=" -> return $! VDouble $ test (l /= r)
+          ">"  -> return $! VDouble $ test (l >  r)
+          ">=" -> return $! VDouble $ test (l >= r)
+          "<"  -> return $! VDouble $ test (l <  r)
+          "<=" -> return $! VDouble $ test (l <= r)
           otherwise -> fail $ "Unsupported cmp operator " ++ op
   where test b = if b then 1 else 0
 
 eval (Not e) = do
-     b <- liftM coerceToBool $ eval e
-     return $ VDouble (if b then 0.0 else 1.0)
+     b <- liftM coerceToBool $! eval e
+     return $! VDouble (if b then 0.0 else 1.0)
 
 eval (Neg e) = do
-     d <- liftM coerceToDouble $ eval e
-     return $ VDouble (- d)
+     d <- liftM coerceToDouble $! eval e
+     return $! VDouble (- d)
 
 eval (Concat _ _ )  = unsup "Concatenations"
 eval (In _ _)       = unsup "Array membership tests"
 
 eval (Logic op le re) = do
-     l <- liftM coerceToBool $ eval le
-     r <- liftM coerceToBool $ eval re
+     l <- liftM coerceToBool $! eval le
+     r <- liftM coerceToBool $! eval re
      case op of
-          "&&" -> return $ VDouble $ test (l && r)
-          "||" -> return $ VDouble $ test (l || r)
+          "&&" -> return $! VDouble $ test (l && r)
+          "||" -> return $! VDouble $ test (l || r)
           otherwise -> fail $ "Unsupported logical operator " ++ op
    where test b = if b then 1 else 0
 
@@ -219,20 +220,20 @@ eval (Assignment op p v) = do
 calcNewValue oldVal op arg =
      case op of
         "="  -> arg
-        "+=" -> VDouble $ coerceToDouble oldVal + coerceToDouble arg
-        "-=" -> VDouble $ coerceToDouble oldVal - coerceToDouble arg
-        "*=" -> VDouble $ coerceToDouble oldVal * coerceToDouble arg
-        "/=" -> VDouble $ coerceToDouble oldVal / coerceToDouble arg
+        "+=" -> VDouble $! coerceToDouble oldVal + coerceToDouble arg
+        "-=" -> VDouble $! coerceToDouble oldVal - coerceToDouble arg
+        "*=" -> VDouble $! coerceToDouble oldVal * coerceToDouble arg
+        "/=" -> VDouble $! coerceToDouble oldVal / coerceToDouble arg
         otherwise -> undefined
 
 assignToField op ref val = do
-     i <- liftM coerceToInt $ eval ref
+     i <- liftM coerceToInt $! eval ref
      oldFields <- gets hcFields
      let newValue  = calcNewValue (oldFields Map.! i) op val
          newFields = Map.insert i newValue oldFields
      modify (\s -> s { hcFields = newFields })
      reconstructThisLine
-     return newValue
+     return $! newValue
 
 reconstructThisLine = do
      thisFields <- gets (Map.toList . hcFields)
@@ -246,15 +247,15 @@ assignToVar op name val = do
      let newValue = calcNewValue (oldVars Map.! name) op val
          newVars  = Map.insert name newValue oldVars
      modify (\s -> s { hcVars = newVars })
-     return newValue
+     return $! newValue
 
 -- Currently for internal use only
 assignToBVar op name val = do
-     oldBVars <- gets hcBVars
-     let newValue = calcNewValue (oldBVars Map.! name) op val
-         newBVars = Map.insert name newValue oldBVars
-     modify (\s -> s { hcBVars = newBVars })
-     return newValue
+   oldBVars <- gets hcBVars
+   let newValue = calcNewValue (oldBVars Map.! name) op val
+       newBVars = Map.insert name newValue oldBVars
+   modify $ (\s -> s { hcBVars = newBVars })
+   return $! newValue
 
 incrField n fld@(FieldRef e) = do
    oldVal <- eval fld
@@ -322,7 +323,7 @@ exec _ (Expression e) = eval e >> return ()
 exec k (Block es)     = mapM_ (exec k) es
 
 exec k (IF c t me)    = do
-     b <- liftM coerceToBool $ eval c
+     b <- liftM coerceToBool $! eval c
      if b
      then exec k t
      else case me of
@@ -332,7 +333,7 @@ exec k (IF c t me)    = do
 exec k w@(WHILE c s) = callCC $ \br -> do
      let k' = k {kBreak = br, kCont = \_ -> nextWhile k'}
          nextWhile kk = do
-            b <- liftM coerceToBool $ eval c
+            b <- liftM coerceToBool $! eval c
             when b $ (exec kk s >> nextWhile kk)
             br ()
      nextWhile k'
@@ -343,7 +344,7 @@ exec k (FOR i c st s) = callCC $ \br -> do
         initFor    = eval (fromJust i)
         nextFor kk = eval (fromJust st) >> execFor kk
         execFor kk = do
-           b <- liftM coerceToBool $ eval (fromJust c)
+           b <- liftM coerceToBool $! eval (fromJust c)
            when b $ exec kk s >> nextFor kk
            br ()
     initFor
@@ -353,14 +354,14 @@ exec k d@(DO s c) = callCC $ \br -> do
      let k' = k {kBreak = br, kCont = \_ -> nextDo k'}
          nextDo kk = do
             exec kk s
-            b <- liftM coerceToBool $ eval c
+            b <- liftM coerceToBool $! eval c
             when b $ nextDo kk
             br ()
      nextDo k'
 
 exec _ (PRINT es) = do
-   ofs <- liftM toString $ eval (BuiltInVar "OFS")
-   ors <- liftM toString $ eval (BuiltInVar "ORS")
+   ofs <- liftM toString $! eval (BuiltInVar "OFS")
+   ors <- liftM toString $! eval (BuiltInVar "ORS")
    str <- case es of
       []        -> gets hcThisLine
       otherwise -> liftM (intercalate ofs . map toString) $ mapM eval es
