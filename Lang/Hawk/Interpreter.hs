@@ -221,10 +221,10 @@ eval (Assignment op p v) = do
 calcNewValue oldVal op arg =
      case op of
         "="  -> arg
-        "+=" -> VDouble $ coerceToDouble oldVal + coerceToDouble arg
-        "-=" -> VDouble $ coerceToDouble oldVal - coerceToDouble arg
-        "*=" -> VDouble $ coerceToDouble oldVal * coerceToDouble arg
-        "/=" -> VDouble $ coerceToDouble oldVal / coerceToDouble arg
+        "+=" -> VDouble $! coerceToDouble oldVal + coerceToDouble arg
+        "-=" -> VDouble $! coerceToDouble oldVal - coerceToDouble arg
+        "*=" -> VDouble $! coerceToDouble oldVal * coerceToDouble arg
+        "/=" -> VDouble $! coerceToDouble oldVal / coerceToDouble arg
         otherwise -> undefined
 
 assignToField op ref val = do
