@@ -204,7 +204,15 @@ eval (Neg e) = do
      return $! VDouble (- d)
 
 eval (Concat _ _ )  = unsup "Concatenations"
-eval (In _ _)       = unsup "Array membership tests"
+
+-- In a membership test, array name is parsed as an ordinary variable reference.
+-- TODO: Check in grammar
+eval (In s (VariableRef arr)) = do
+     arrs   <- gets hcArrays
+     subscr <- liftM toString $ eval s
+     return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
+  where test b = if b then 1 else 0
+eval (In _ _) = fail $ "Incorrect membership test syntax"
 
 eval (Logic op le re) = do
      l <- liftM coerceToBool $! eval le
@@ -386,6 +394,20 @@ exec k d@(DO s c) = callCC $ \br -> do
             br ()
      nextDo k'
 
+-- TODO: The order in which the keys will be traversed may be suprising
+exec k f@(FOREACH v@(VariableRef vname) arr st) = do
+     arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
+     callCC $ \br -> do
+       let k' = k {kBreak = br, kCont = \_ -> nextFor k' (tail arrData)}
+           nextFor kk []     = br ()
+           nextFor kk ((_,s):ss) = do
+             assignToVar "=" vname (VString $ B.pack s)
+             let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
+             exec kk' st
+             nextFor kk' ss
+       nextFor k' arrData
+   where inArray (a, _) = a == arr
+
 exec _ (PRINT es) = do
    ofs <- liftM toString $! eval (BuiltInVar "OFS")
    ors <- liftM toString $! eval (BuiltInVar "ORS")
@@ -400,4 +422,12 @@ exec k (NEXT)     = (kNext  k) ()
 exec k (EXIT _)   = (kExit  k) () -- TODO argument
 exec k (RETURN _) = (kRet   k) () -- TODO argument
 exec _ (NOP)      = return ()
-exec _ (DELETE _) = unsup "`delete` statements"
+
+exec _ (DELETE e) = case e of
+    (ArrayRef arr idx) -> do
+       oldArrs <- gets hcArrays
+       subscr  <- liftM toString $ eval idx
+       let index = (arr, B.unpack subscr)
+       modify $ \s -> s {hcArrays = M.delete index oldArrs}
+       return ()
+    otherwise -> fail $ "Syntax error: delete element"

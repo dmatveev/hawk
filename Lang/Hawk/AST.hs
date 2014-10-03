@@ -35,7 +35,7 @@ data Statement = Expression Expression
                | IF Expression Statement (Maybe Statement)
                | WHILE Expression Statement
                | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression) Statement
-               | FOREACH Expression Expression Statement
+               | FOREACH Expression String Statement
                | DO Statement Expression
                | PRINT [Expression]
                | BREAK
@@ -92,7 +92,7 @@ visitStmtExpr f = visitStmt f'
         f' (IF c _ _)       = f c
         f' (WHILE e _)      = f e
         f' (FOR mi mc ms _) = concat $ map (maybe [] f) [mi, mc, ms]
-        f' (FOREACH e a _)  = f e ++ f a
+        f' (FOREACH e _ _)  = f e
         f' (DO _ e)         = f e
         f' (PRINT es)       = concat $ map f es
         f' (EXIT me)        = maybe [] f me
@@ -111,7 +111,7 @@ visitExpr f e = f e ++ case e of
    (Not ex)           -> f ex
    (Neg ex)           -> f ex
    (Concat l r)       -> f l ++ f r
-   (In l r)           -> f l ++ f r
+   (In ex _)          -> f ex
    (Logic _ l r)      -> f l ++ f r
    (Match l r)        -> f l ++ f r
    (NoMatch l r)      -> f l ++ f r

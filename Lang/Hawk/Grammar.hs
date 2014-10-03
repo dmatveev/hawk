@@ -242,7 +242,7 @@ stForEach = do
     (var,arr) <- parens $ do
        v <- variableRef
        reserved "in"
-       a <- variableRef
+       a <- identifier
        return (v,a)
     s <- statement
     return $ FOREACH var arr s
