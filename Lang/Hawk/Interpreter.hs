@@ -28,17 +28,19 @@ data HawkContext = HawkContext
                  , hcThisLine :: !B.ByteString
                  }
 
+(*!) :: Ord k => M.Map k Value -> k -> Value
+m *! k = M.findWithDefault (VDouble 0) k m
+
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcCode     = s
                  , hcFields   = M.empty
-                 , hcVars     = M.fromList initialVars
+                 , hcVars     = M.empty
                  , hcArrays   = M.empty
                  , hcBVars    = M.fromList initialBuiltInVars
                  , hcThisLine = ""
                  }
-  where initialVars = map (, VString "") $ vars s 
-        initialBuiltInVars = [ ("FNR", VDouble 0)
+  where initialBuiltInVars = [ ("FNR", VDouble 0)
                              , ("NR",  VDouble 0)
                              , ("NF",  VDouble 0)
                              , ("OFS", VString " ")
@@ -164,16 +166,16 @@ eval (FieldRef e) = do
 
 eval (VariableRef s) = do
      vs <- gets hcVars
-     return $! vs M.! s
+     return $! vs *! s -- M.findWithDefault (VDouble 0) s vs
 
 eval (BuiltInVar s) = do
      bvs <- gets hcBVars
-     return $! bvs M.! s
+     return $! bvs *! s
 
 eval (ArrayRef s e) = do
      idx <- liftM toString $! eval e
      ars <- gets hcArrays
-     return $! ars M.! (s, B.unpack idx)
+     return $! ars *! (s, B.unpack idx)
 
 eval (Incr n f@(FieldRef e))    = incrField n f
 eval (Incr n v@(VariableRef s)) = incrVar   n v
@@ -246,7 +248,7 @@ calcNewValue oldVal op arg =
 assignToField op ref val = do
      i <- liftM coerceToInt $! eval ref
      oldFields <- gets hcFields
-     let newValue  = calcNewValue (oldFields M.! i) op val
+     let newValue  = calcNewValue (oldFields *! i) op val
          newFields = M.insert i newValue oldFields
      modify (\s -> s { hcFields = newFields })
      reconstructThisLine
@@ -261,7 +263,7 @@ reconstructThisLine = do
 
 assignToVar op name val = do
      oldVars <- gets hcVars
-     let newValue = calcNewValue (oldVars M.! name) op val
+     let newValue = calcNewValue (oldVars *! name) op val
          newVars  = M.insert name newValue oldVars
      modify (\s -> s { hcVars = newVars })
      return $! newValue
@@ -269,7 +271,7 @@ assignToVar op name val = do
 -- Currently for internal use only
 assignToBVar op name val = do
    oldBVars <- gets hcBVars
-   let newValue = calcNewValue (oldBVars M.! name) op val
+   let newValue = calcNewValue (oldBVars *! name) op val
        newBVars = M.insert name newValue oldBVars
    modify $ (\s -> s { hcBVars = newBVars })
    return $! newValue
@@ -278,7 +280,7 @@ assignToArr op arr ref val = do
    oldArrs <- gets hcArrays
    subscr  <- liftM toString $ eval ref
    let index     = (arr, B.unpack subscr)
-       newValue  = calcNewValue (oldArrs M.! index) op val
+       newValue  = calcNewValue (oldArrs *! index) op val
        newArrays = M.insert index newValue oldArrs
    modify $ (\s -> s { hcArrays = newArrays })
    return $! newValue
