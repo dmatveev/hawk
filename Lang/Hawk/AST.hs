@@ -20,7 +20,6 @@ data Expression = Arith Op Expression Expression
                 | Incr Notation Expression
                 | Decr Notation Expression
                 | Relation Op Expression Expression
-                | FunCall String [Expression]
                 | Not Expression
                 | Neg Expression
                 | Concat Expression Expression
@@ -28,6 +27,7 @@ data Expression = Arith Op Expression Expression
                 | Logic Op Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
+                | FunCall String [Expression]
                   deriving (Eq, Show)
 
 data Statement = Expression Expression

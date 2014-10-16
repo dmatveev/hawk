@@ -3,7 +3,7 @@
 module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
-import Data.List (intercalate)
+import Data.List (find, intercalate)
 import Data.Maybe (fromJust)
 
 import GHC.Float (floatToDigits)
@@ -25,6 +25,7 @@ data HawkContext = HawkContext
                  , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcBVars    :: !(M.Map String Value)
+                 , hcStack    :: ![M.Map String Value]
                  , hcThisLine :: !B.ByteString
                  }
 
@@ -38,6 +39,7 @@ emptyContext s = HawkContext
                  , hcVars     = M.empty
                  , hcArrays   = M.empty
                  , hcBVars    = M.fromList initialBuiltInVars
+                 , hcStack    = []
                  , hcThisLine = ""
                  }
   where initialBuiltInVars = [ ("FNR", VDouble 0)
@@ -161,8 +163,16 @@ eval (FieldRef e) = do
              return $! fs M.! i
 
 eval (VariableRef s) = do
+     -- Variable lookup is special, since we may have an hierarchy
+     -- of scopes with its personal variables (in function calls).
+     -- So it first we do lookup in stack top, and then in the global
+     -- dictionary.
+     st <- gets hcStack
      vs <- gets hcVars
-     return $! vs *! s -- M.findWithDefault (VDouble 0) s vs
+     let globalVal = vs *! s
+     return $! case st of
+       (f:_)     -> M.findWithDefault globalVal s f
+       otherwise -> globalVal
 
 eval (BuiltInVar s) = do
      bvs <- gets hcBVars
@@ -224,6 +234,33 @@ eval (Logic op le re) = do
 eval (Match _ _)    = unsup "Regexp matchings"
 eval (NoMatch _ _)  = unsup "Regexp matchings"
 
+eval (FunCall f args) = do
+     mfcn <- liftM (find (func f)) $ gets hcCode
+     case mfcn of
+       (Just (Function _ argNames stmt)) -> do
+           -- Build a stack frame for function call first
+           argVals <- mapM eval args
+           let numArgs = length argNames
+               numVals = length argVals
+               numLocs = numArgs - numVals
+
+               boundArgs = zip argNames argVals
+               localVars = if numLocs > 0
+                           then zip (drop numVals argNames) $ repeat (VDouble 0)
+                           else []
+               newStackFrame = M.fromList $! boundArgs ++ localVars
+
+           oldStack <- gets hcStack
+           modify $ (\s -> s { hcStack = newStackFrame:oldStack })
+           exec emptyKBlock stmt -- TODO: kblock
+           modify $ (\s -> s { hcStack = oldStack })
+           return $ VDouble 0    -- TODO: retval
+       Nothing    -> fail $ f ++ " - unknown function"
+       otherwise  -> fail $ "Fatal error when invoking function " ++ f
+  where
+     func s (Function ss _ _) = s == ss
+     func s _                 = False
+
 eval (Assignment op p v) = do
      val <- eval v
      case p of
@@ -258,11 +295,28 @@ reconstructThisLine = do
      return ()
 
 assignToVar op name val = do
-     oldVars <- gets hcVars
-     let newValue = calcNewValue (oldVars *! name) op val
-         newVars  = M.insert name newValue oldVars
-     modify (\s -> s { hcVars = newVars })
-     return $! newValue
+     -- As the lookup, variable assignment is also special.
+     -- At first, we try to update variable in the current scope (if any),
+     -- then we refer to the global scope.
+     oldVars  <- gets hcVars
+     oldStack <- gets hcStack
+     case oldStack of
+       (f:_) -> case name `M.lookup` f of
+                  Nothing  -> updGlobal oldVars
+                  (Just v) -> updStack oldStack
+       []    -> updGlobal oldVars
+  where
+     updGlobal oldVars = do
+       let newValue = calcNewValue (oldVars *! name) op val
+           newVars  = M.insert name newValue oldVars
+       modify (\s -> s { hcVars = newVars })
+       return $! newValue
+
+     updStack (f:fs) = do
+       let newValue = calcNewValue (f *! name) op val
+           newVars  = M.insert name newValue f
+       modify (\s -> s { hcStack = newVars:fs })
+       return $! newValue
 
 -- Currently for internal use only
 assignToBVar op name val = do

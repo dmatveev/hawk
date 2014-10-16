@@ -292,9 +292,7 @@ function = do
     reserved "function"
     name <- identifier
     params <- parens $ identifier `sepBy` (symbol ",")
-    symbol "{"
     body <- statement
-    symbol "}"
     return $ Function name params body
 
 section = do
