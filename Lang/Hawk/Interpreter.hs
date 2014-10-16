@@ -86,19 +86,15 @@ intMain inputFile = do
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
-       let kBlock = emptyKBlock {kExit = ex}
-       forM_ (B.lines input) $ processLine kBlock
+       let k = emptyKBlock {kExit = ex}
+           nextLine kk [] = ex ()
+           nextLine kk (s:ss) = do
+              let k' = kk { kNext = \_ -> nextLine k' ss }
+              seq k' $ processLine k' s
+              nextLine k' ss
+       nextLine k (B.lines input)
        ex ()
     finalize
-
-
--- processLines :: KBlock -> [String] -> Interpreter ()
--- processLines _ [] = return ()
--- processLines k (x:xs) = do
---     let k' = k { kNext = \_ -> nextLines k' }
---         nextLines kk = processLines kk xs >> (kExit k) ()
---     processLine k' x
---     nextLines k'
 
 
 -- processLine takes a new (next) line from input stream, prepares
@@ -339,12 +335,12 @@ toString (VDouble d) =
        then B.pack $ concat $ map show rs
        else B.pack $ show d
 
--- Execute a statement
-data KBlock = KBlock { kNext  :: (() -> Interpreter ())
-                     , kExit  :: (() -> Interpreter ())
-                     , kRet   :: (() -> Interpreter ())
-                     , kCont  :: (() -> Interpreter ())
-                     , kBreak :: (() -> Interpreter ())
+
+data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
+                     , kExit  :: !(() -> Interpreter ())
+                     , kRet   :: !(() -> Interpreter ())
+                     , kCont  :: !(() -> Interpreter ())
+                     , kBreak :: !(() -> Interpreter ())
                      }
 
 emptyKBlock :: KBlock
@@ -355,6 +351,7 @@ emptyKBlock = KBlock { kNext  = return
                      , kBreak = return
                      }
 
+-- Execute a statement
 exec :: KBlock -> Statement -> Interpreter ()
 exec _ (Expression e) = eval e >> return ()
 exec k (Block es)     = mapM_ (exec k) es
@@ -400,14 +397,15 @@ exec k d@(DO s c) = callCC $ \br -> do
 exec k f@(FOREACH v@(VariableRef vname) arr st) = do
      arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
      callCC $ \br -> do
-       let k' = k {kBreak = br, kCont = \_ -> nextFor k' (tail arrData)}
-           nextFor kk []     = br ()
+       let k' = k {kBreak = br}
+           nextFor kk []         = br ()
            nextFor kk ((_,s):ss) = do
              assignToVar "=" vname (VString $ B.pack s)
              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
-             exec kk' st
+             seq kk' $ exec kk' st
              nextFor kk' ss
        nextFor k' arrData
+       br ()
    where inArray (a, _) = a == arr
 
 exec _ (PRINT es) = do
