@@ -1,0 +1,115 @@
+#+TITLE: Hawk conformance status
+
+* The Original AWK
+
+** Basic
+
+| Entity      | Parser | Interpreter | Comments |
+|-------------+--------+-------------+----------|
+| Comments    | YES    | n/a         |          |
+| Backslashes | NO     |             |          |
+
+
+** Patterns
+
+| Patterns            | Parser | Interpreter | Comments                 |
+|---------------------+--------+-------------+--------------------------|
+| ~BEGIN~             | YES    | YES         |                          |
+| ~END~               | YES    | YES         |                          |
+| Expressions         | YES    | YES         |                          |
+| Regular expressions | YES    | NO          |                          |
+| Compound patterns   | YES    | YES         | Covered by "Expressions" |
+| Range patterns      | YES    | NO          |                          |
+
+
+** Regular expressions
+
+Nothing is implemented yet.
+
+** Expressions
+
+| Expressoin         | Parser | Interpreter | Comments                                  |
+|--------------------+--------+-------------+-------------------------------------------|
+| Constants          | WIP    |             | Only single numeric format is supported   |
+| Variables          | YES    | YES         |                                           |
+| Arrays             | WIP    | WIP         | Compound subscripts are not supported     |
+| Built-in variables | YES    | WIP         | See "Build-in variables"                  |
+| Field variables    | YES    | YES         |                                           |
+| Operators          | YES    | YES         | See "Operators"                           |
+| Functions          | YES    | WIP         | Only user-defined functions are supported |
+|                    |        |             | by the run-time. See "build-in functions" |
+
+
+** Operators
+
+| Operator          | Parser | Interpreter | Comments                                       |
+|-------------------+--------+-------------+------------------------------------------------|
+| ~=~,  ~+=~, ~-=~, | YES    | WIP         | ~%=~ and ~^=~ are not supported                |
+| ~*=~, ~/=~,       |        |             |                                                |
+| ~%=~, ~^=~        |        |             |                                                |
+| ~? :~             | NO     |             | Ternary operator is not supported              |
+| ~OR~              | YES    | YES         |                                                |
+| ~AND~             | YES    | YES         |                                                |
+| ~in~              | YES    | YES         |                                                |
+| =~=, =!~=         | YES    | NO          |                                                |
+| ~<~, ~<=~, ~==~,  |        |             |                                                |
+| ~!=~, ~>=~, ~>~   | YES    | WIP         | Only for numeric values                        |
+| Concatenation     | NO     | NO          | Explicit ~:~ operator is supported by grammar, |
+|                   |        |             | though not yet supported by the runtime.       |
+| ~+~, ~-~          | YES    | YES         |                                                |
+| ~*~, ~/~, ~%~     | YES    | WIP         | ~%~ is unsupported                             |
+| Unary ~+~, ~-~    | YES    | NO          |                                                |
+| ~!~               | YES    | NO          |                                                |
+| ~^~               | YES    | NO          |                                                |
+| ~++~, ~--~        | YES    | YES         |                                                |
+| ~$~               | YES    | YES         |                                                |
+| ~()~              | YES    | YES         | No support required on the interpreter side.   |
+
+
+** Built-in functions 
+
+| Function     | Interpreter | Comments | Function           | Interpreter | Comments |
+|--------------+-------------+----------+--------------------+-------------+----------|
+| /            |             | >        | <                  |             | >        |
+| ~atan2(y,x)~ | NO          |          | ~gsub(r,s)~        | NO          |          |
+| ~cos(x)~     | NO          |          | ~gsub(r,s,t)~      | NO          |          |
+| ~exp(x)~     | NO          |          | ~index(s,t)~       | NO          |          |
+| ~int(x)~     | NO          |          | ~length(s)~        | NO          |          |
+| ~log(x)~     | NO          |          | ~match(s,r)~       | NO          |          |
+| ~rand(x)~    | NO          |          | ~split(s,a)~       | NO          |          |
+| ~sin(x)~     | NO          |          | ~split(s,a,fs)~    | NO          |          |
+| ~sqrt(x)~    | NO          |          | ~sprintf(fmt,...)~ | NO          |          |
+| ~srand()~    | NO          |          | ~sub(r,s)~         | NO          |          |
+| ~srand(x)~   | NO          |          | ~sub(r,s,t)~       | NO          |          |
+|              |             |          | ~substr(s,p,n)~    | NO          |          |
+
+
+** Run-time value coercion
+
+| Context       | Interpreter | Comments                |
+|---------------+-------------+-------------------------|
+| Arithmetic    | YES         |                         |
+| Concatenation | NO          |                         |
+| Comparision   | WIP         | Only for numeric values |
+
+
+** Actions
+   
+| Action      | Parser | Interpreter | Comments                           |
+|-------------+--------+-------------+------------------------------------|
+| ~print~     | YES    | YES         |                                    |
+| ~printf~    | YES    | NO          | Processed as a function call       |
+| ~if~        | YES    | YES         |                                    |
+| ~if..else~  | YES    | YES         |                                    |
+| ~while~     | YES    | YES         |                                    |
+| ~for~       | YES    | YES         |                                    |
+| ~for..in~   | YES    | YES         | The order of keys traversed may be |
+|             |        |             | little bit suprising               |
+| ~do..while~ | YES    | YES         |                                    |
+| ~break~     | YES    | YES         |                                    |
+| ~continue~  | YES    | YES         |                                    |
+| ~next~      | YES    | YES         |                                    |
+| ~exit~      | YES    | WIP         | Exit codes are not supported,      |
+|             |        |             | no special case for exit at ~END~  |
+| ~return~    | YES    | NO          |                                    |
+| ~{}~        | YES    | YES         |                                    |
