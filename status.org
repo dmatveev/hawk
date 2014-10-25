@@ -111,5 +111,5 @@ Nothing is implemented yet.
 | ~next~      | YES    | YES         |                                    |
 | ~exit~      | YES    | WIP         | Exit codes are not supported,      |
 |             |        |             | no special case for exit at ~END~  |
-| ~return~    | YES    | NO          |                                    |
+| ~return~    | YES    | YES         |                                    |
 | ~{}~        | YES    | YES         |                                    |

@@ -4,7 +4,7 @@ module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
 import Data.List (find, intercalate)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 
 import GHC.Float (floatToDigits)
 
@@ -26,6 +26,7 @@ data HawkContext = HawkContext
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcBVars    :: !(M.Map String Value)
                  , hcStack    :: ![M.Map String Value]
+                 , hcRetVal   :: !Value
                  , hcThisLine :: !B.ByteString
                  }
 
@@ -40,6 +41,7 @@ emptyContext s = HawkContext
                  , hcArrays   = M.empty
                  , hcBVars    = M.fromList initialBuiltInVars
                  , hcStack    = []
+                 , hcRetVal   = VDouble 0
                  , hcThisLine = ""
                  }
   where initialBuiltInVars = [ ("FNR", VDouble 0)
@@ -251,10 +253,14 @@ eval (FunCall f args) = do
                newStackFrame = M.fromList $! boundArgs ++ localVars
 
            oldStack <- gets hcStack
-           modify $ (\s -> s { hcStack = newStackFrame:oldStack })
-           exec emptyKBlock stmt -- TODO: kblock
+           modify $ (\s -> s { hcStack = newStackFrame:oldStack, hcRetVal = VDouble 0 })
+           callCC $ \ret -> do
+              let retHook (Just v) = modify (\s -> s { hcRetVal = v }) >> ret ()
+                  retHook Nothing  = ret ()
+                  k = seq retHook $ emptyKBlock {kRet = retHook}
+              exec k stmt
            modify $ (\s -> s { hcStack = oldStack })
-           return $ VDouble 0    -- TODO: retval
+           gets hcRetVal
        Nothing    -> fail $ f ++ " - unknown function"
        otherwise  -> fail $ "Fatal error when invoking function " ++ f
   where
@@ -392,7 +398,7 @@ toString (VDouble d) =
 
 data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
                      , kExit  :: !(() -> Interpreter ())
-                     , kRet   :: !(() -> Interpreter ())
+                     , kRet   :: !(Maybe Value -> Interpreter ())
                      , kCont  :: !(() -> Interpreter ())
                      , kBreak :: !(() -> Interpreter ())
                      }
@@ -400,7 +406,7 @@ data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
 emptyKBlock :: KBlock
 emptyKBlock = KBlock { kNext  = return
                      , kExit  = return
-                     , kRet   = return
+                     , kRet   = \_ -> return ()
                      , kCont  = return
                      , kBreak = return
                      }
@@ -470,12 +476,14 @@ exec _ (PRINT es) = do
       otherwise -> liftM (B.intercalate ofs . map toString) $ mapM eval es
    liftIO $ B.putStr $ B.append str ors
 
-exec k (BREAK)    = (kBreak k) ()
-exec k (CONT)     = (kCont  k) ()
-exec k (NEXT)     = (kNext  k) ()
-exec k (EXIT _)   = (kExit  k) () -- TODO argument
-exec k (RETURN _) = (kRet   k) () -- TODO argument
-exec _ (NOP)      = return ()
+exec k (BREAK)     = (kBreak k) ()
+exec k (CONT)      = (kCont  k) ()
+exec k (NEXT)      = (kNext  k) ()
+exec k (EXIT _)    = (kExit  k) () -- TODO argument
+exec k (RETURN me) = case me of
+      Nothing   -> (kRet k) Nothing
+      Just expr -> eval expr >>= (kRet k . Just)
+exec _ (NOP)       = return ()
 
 exec _ (DELETE e) = case e of
     (ArrayRef arr idx) -> do
