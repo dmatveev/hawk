@@ -52,6 +52,7 @@ emptyContext s = HawkContext
                              , ("NR",  VDouble 0)
                              , ("NF",  VDouble 0)
                              , ("OFS", VString " ")
+                             , ("FS",  VString " ")
                              , ("ORS", VString "\n")
                              ]
 
@@ -265,6 +266,37 @@ eval (FunCall "rand" []) = do
      modify $ (\s -> s { hcStdGen = g' })
      return $! VDouble r
 
+eval (FunCall "index" [vs, vt]) = do
+     s <- liftM toString $! eval vs
+     t <- liftM toString $! eval vt
+     let (x, y) = B.breakSubstring t s
+     return $! if B.null y
+               then VDouble 0
+               else VDouble $ fromIntegral $ 1 + B.length x
+
+eval (FunCall "length" [vs]) = do
+     s <- liftM toString $! eval vs
+     return $! VDouble $ fromIntegral $ B.length s
+
+eval (FunCall "split" [vs, (VariableRef a)]) = do
+     fs <- liftM toString $ eval (BuiltInVar "FS")
+     evalSplit vs fs a
+
+eval (FunCall "split" [vs, (VariableRef a), vfs]) = do
+     fs <- liftM toString $ eval vfs
+     evalSplit vs fs a
+
+eval (FunCall "substr" [vs, vp]) = do
+     s <- liftM toString    $ eval vs
+     p <- liftM coerceToInt $ eval vp
+     return $! VString $ B.drop (p-1) s
+
+eval (FunCall "substr" [vs, vp, vn]) = do
+     s <- liftM toString    $ eval vs
+     p <- liftM coerceToInt $ eval vp
+     n <- liftM coerceToInt $ eval vn
+     return $! VString $ B.take n $ B.drop (p-1) s
+
 eval (FunCall f args) = do
      mfcn <- liftM (find (func f)) $ gets hcCode
      case mfcn of
@@ -308,6 +340,32 @@ proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
 proxyFcn f e = do
      d <- liftM coerceToDouble $ eval e
      return $! VDouble $ f d
+
+splitWith :: B.ByteString -> B.ByteString -> [B.ByteString]
+splitWith s fs = reverse $! splitWith' s []
+  where
+    splitWith' str res = case B.breakSubstring fs str of
+       (x, y) | B.null y  -> x:res
+              | otherwise -> splitWith' (B.drop nfs y) (x:res)
+    nfs = B.length fs
+
+evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
+evalSplit vs fs arr = do
+   s <- liftM toString $ eval vs
+   let ss = s `splitWith` fs
+       is = [1, 2..]
+   ars <- gets hcArrays
+   let -- at first, clear the array from its previous contents
+       -- TODO: very slow, when we have all arrays in a single Data.Map
+       ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
+       -- Form a new array containing extracted values
+       keys  = map (arr,)  $ (map show is)
+       strs  = map VString $ ss
+       res   = M.fromList $ zip keys strs
+       -- Put our new values then
+       ars'' = M.union ars' res
+   modify $ (\s -> s { hcArrays = ars'' })
+   return $! VDouble $ fromIntegral $ length ss
 
 calcNewValue oldVal op arg =
      case op of
