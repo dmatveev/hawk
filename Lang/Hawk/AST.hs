@@ -2,7 +2,7 @@ module Lang.Hawk.AST where
 
 type Op = String
 
-data Literal = LitNumeric Integer
+data Literal = LitNumeric Double
              | LitStr String
              | LitRE String
                deriving (Eq, Show)

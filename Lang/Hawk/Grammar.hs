@@ -1,7 +1,7 @@
 module Lang.Hawk.Grammar where
 
 import Data.Maybe
-import Control.Monad (when)
+import Control.Monad (when, liftM)
 
 import Text.Parsec
 import Text.Parsec.Language
@@ -57,6 +57,7 @@ lexer = P.makeTokenParser
         })
 parens     = P.parens lexer
 natural    = P.natural lexer
+float      = P.float lexer
 strlit     = P.stringLiteral lexer
 reserved   = P.reserved lexer
 reservedOp = P.reservedOp lexer
@@ -113,7 +114,9 @@ literal = stringLit <|> numericLit <|> regexLit
 
 regexLit   = regex   >>= (return . Const . LitRE)
 stringLit  = strlit  >>= (return . Const . LitStr)
-numericLit = natural >>= (return . Const . LitNumeric)
+numericLit = do
+   v <- (try float) <|> (liftM fromIntegral $ natural)
+   return $ Const $ LitNumeric v
 
 regex =  do
      char '/'

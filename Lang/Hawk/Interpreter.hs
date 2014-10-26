@@ -153,7 +153,7 @@ eval (Arith op le re) = do
           "-" -> return $! VDouble (l - r)
           otherwise -> fail $ "Unsupported arith operator " ++ op
 
-eval (Const (LitNumeric i)) = return $! VDouble (fromInteger i)
+eval (Const (LitNumeric i)) = return $! VDouble i
 eval (Const (LitStr s))     = return $! VString $ B.pack s
 eval (Const _)              = fail "Unsupported literal type"
 
@@ -236,6 +236,18 @@ eval (Logic op le re) = do
 eval (Match _ _)    = unsup "Regexp matchings"
 eval (NoMatch _ _)  = unsup "Regexp matchings"
 
+eval (FunCall "atan2" [vy, vx]) = do
+     y <- liftM coerceToDouble $! eval vy
+     x <- liftM coerceToDouble $! eval vx
+     return $! VDouble $ atan2 y x
+
+eval (FunCall "cos"  [vx]) = proxyFcn cos vx
+eval (FunCall "exp"  [vx]) = proxyFcn exp vx
+eval (FunCall "int"  [vx]) = proxyFcn (fromIntegral . truncate) vx
+eval (FunCall "log"  [vx]) = proxyFcn log vx
+eval (FunCall "sin"  [vx]) = proxyFcn sin vx
+eval (FunCall "sqrt" [vx]) = proxyFcn sqrt vx
+
 eval (FunCall f args) = do
      mfcn <- liftM (find (func f)) $ gets hcCode
      case mfcn of
@@ -274,6 +286,11 @@ eval (Assignment op p v) = do
        (VariableRef name) -> assignToVar   op name val
        (ArrayRef arr ref) -> assignToArr   op arr ref val
        otherwise -> fail "Only to-field and to-variable assignments are supported"
+
+proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
+proxyFcn f e = do
+     d <- liftM coerceToDouble $ eval e
+     return $! VDouble $ f d
 
 calcNewValue oldVal op arg =
      case op of
