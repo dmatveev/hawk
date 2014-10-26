@@ -13,6 +13,8 @@ import Control.Monad.Cont
 import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 
+import System.Random
+
 import Lang.Hawk.AST
 
 data Value = VString !B.ByteString
@@ -28,6 +30,7 @@ data HawkContext = HawkContext
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
                  , hcThisLine :: !B.ByteString
+                 , hcStdGen   :: StdGen
                  }
 
 (*!) :: Ord k => M.Map k Value -> k -> Value
@@ -43,6 +46,7 @@ emptyContext s = HawkContext
                  , hcStack    = []
                  , hcRetVal   = VDouble 0
                  , hcThisLine = ""
+                 , hcStdGen   = mkStdGen 0
                  }
   where initialBuiltInVars = [ ("FNR", VDouble 0)
                              , ("NR",  VDouble 0)
@@ -247,6 +251,19 @@ eval (FunCall "int"  [vx]) = proxyFcn (fromIntegral . truncate) vx
 eval (FunCall "log"  [vx]) = proxyFcn log vx
 eval (FunCall "sin"  [vx]) = proxyFcn sin vx
 eval (FunCall "sqrt" [vx]) = proxyFcn sqrt vx
+
+eval (FunCall "srand" vss) = do
+     g <- case vss of
+       [vs] -> liftM (mkStdGen . coerceToInt) $! eval vs
+       []   -> liftIO getStdGen
+     modify $ (\s -> s { hcStdGen = g })
+     return $! VDouble 0 -- TODO: srand return value?
+
+eval (FunCall "rand" []) = do
+     g <- gets hcStdGen
+     let (r, g') = randomR (0.0, 1.0) g
+     modify $ (\s -> s { hcStdGen = g' })
+     return $! VDouble r
 
 eval (FunCall f args) = do
      mfcn <- liftM (find (func f)) $ gets hcCode
