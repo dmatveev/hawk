@@ -71,16 +71,16 @@ Nothing is implemented yet.
 | Function     | Interpreter | Comments | Function           | Interpreter | Comments |
 |--------------+-------------+----------+--------------------+-------------+----------|
 | /            |             | >        | <                  |             | >        |
-| ~atan2(y,x)~ | NO          |          | ~gsub(r,s)~        | NO          |          |
-| ~cos(x)~     | NO          |          | ~gsub(r,s,t)~      | NO          |          |
-| ~exp(x)~     | NO          |          | ~index(s,t)~       | NO          |          |
-| ~int(x)~     | NO          |          | ~length(s)~        | NO          |          |
-| ~log(x)~     | NO          |          | ~match(s,r)~       | NO          |          |
-| ~rand(x)~    | NO          |          | ~split(s,a)~       | NO          |          |
-| ~sin(x)~     | NO          |          | ~split(s,a,fs)~    | NO          |          |
-| ~sqrt(x)~    | NO          |          | ~sprintf(fmt,...)~ | NO          |          |
-| ~srand()~    | NO          |          | ~sub(r,s)~         | NO          |          |
-| ~srand(x)~   | NO          |          | ~sub(r,s,t)~       | NO          |          |
+| ~atan2(y,x)~ | YES         |          | ~gsub(r,s)~        | NO          |          |
+| ~cos(x)~     | YES         |          | ~gsub(r,s,t)~      | NO          |          |
+| ~exp(x)~     | YES         |          | ~index(s,t)~       | NO          |          |
+| ~int(x)~     | YES         |          | ~length(s)~        | NO          |          |
+| ~log(x)~     | YES         |          | ~match(s,r)~       | NO          |          |
+| ~rand(x)~    | YES         |          | ~split(s,a)~       | NO          |          |
+| ~sin(x)~     | YES         |          | ~split(s,a,fs)~    | NO          |          |
+| ~sqrt(x)~    | YES         |          | ~sprintf(fmt,...)~ | NO          |          |
+| ~srand()~    | YES         |          | ~sub(r,s)~         | NO          |          |
+| ~srand(x)~   | YES         |          | ~sub(r,s,t)~       | NO          |          |
 |              |             |          | ~substr(s,p,n)~    | NO          |          |
 
 
