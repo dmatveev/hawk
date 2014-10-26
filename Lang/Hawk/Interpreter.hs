@@ -390,11 +390,13 @@ coerceToInt (VString s)  = read $ B.unpack s
 toString :: Value -> B.ByteString
 toString (VString s) = s
 toString (VDouble d) =
-    let (rs,p) = floatToDigits 10 d
-    in if length rs == p
-       then B.pack $ concat $ map show rs
-       else B.pack $ show d
-
+    let s | rs == [0] && p == 0 = "0"
+          | p >= 0 && nrs <= p  = sgn ++ (concat $ map show rs) ++ take (p-nrs) (repeat '0')
+          | otherwise           = show d
+    in B.pack s
+  where (rs,p) = floatToDigits 10 (abs d)
+        nrs = length rs
+        sgn = if d >= 0 then "" else "-"
 
 data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
                      , kExit  :: !(() -> Interpreter ())
