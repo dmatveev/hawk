@@ -3,6 +3,8 @@
 module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
+import Text.Regex.TDFA
+
 import Data.List (find, intercalate)
 import Data.Maybe (fromJust, fromMaybe)
 
@@ -140,6 +142,7 @@ patternMatches :: Pattern -> Interpreter Bool
 patternMatches BEGIN    = return False
 patternMatches END      = return False
 patternMatches (EXPR e) = liftM coerceToBool $! eval e
+patternMatches (RE s)   = gets hcThisLine >>= \l -> return $! l =~ s
 patternMatches _        = return False -- Not supported yet
 
 unsup s = fail $ s ++ " are not yet supported"
@@ -160,7 +163,7 @@ eval (Arith op le re) = do
 
 eval (Const (LitNumeric i)) = return $! VDouble i
 eval (Const (LitStr s))     = return $! VString $ B.pack s
-eval (Const _)              = fail "Unsupported literal type"
+eval (Const (LitRE s))      = return $! VString $ B.pack s
 
 eval (FieldRef e) = do
      i <- liftM coerceToInt $ eval e
@@ -238,8 +241,18 @@ eval (Logic op le re) = do
           otherwise -> fail $ "Unsupported logical operator " ++ op
    where test b = if b then 1 else 0
 
-eval (Match _ _)    = unsup "Regexp matchings"
-eval (NoMatch _ _)  = unsup "Regexp matchings"
+
+eval (Match s re) = do
+     l <- liftM toString $! eval s
+     r <- liftM toString $! eval re
+     let rv = if r /= "" && l =~ r then 1.0 else 0.0
+     return $! VDouble rv
+
+eval (NoMatch s re) = do
+     l <- liftM toString $! eval s
+     r <- liftM toString $! eval re
+     let rv = if r /= "" && l =~ r then 0.0 else 1.0
+     return $! VDouble rv
 
 eval (FunCall "atan2" [vy, vx]) = do
      y <- liftM coerceToDouble $! eval vy

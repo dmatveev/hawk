@@ -24,7 +24,7 @@
 
 ** Regular expressions
 
-Nothing is implemented yet.
+Currently use ~Regex-TDFA~ as-is.
 
 ** Expressions
 
@@ -35,7 +35,7 @@ Nothing is implemented yet.
 | Arrays             | WIP    | WIP         | Compound subscripts are not supported     |
 | Built-in variables | YES    | WIP         | See "Build-in variables"                  |
 | Field variables    | YES    | YES         |                                           |
-| Operators          | YES    | YES         | See "Operators"                           |
+| Operators          | YES    | WIP         | See "Operators"                           |
 | Functions          | YES    | WIP         | Only user-defined functions are supported |
 |                    |        |             | by the run-time. See "build-in functions" |
 
