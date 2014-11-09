@@ -17,7 +17,7 @@
 | ~BEGIN~             | YES    | YES         |                          |
 | ~END~               | YES    | YES         |                          |
 | Expressions         | YES    | YES         |                          |
-| Regular expressions | YES    | NO          |                          |
+| Regular expressions | YES    | YES         |                          |
 | Compound patterns   | YES    | YES         | Covered by "Expressions" |
 | Range patterns      | YES    | NO          |                          |
 
@@ -28,17 +28,15 @@ Currently use ~Regex-TDFA~ as-is.
 
 ** Expressions
 
-| Expressoin         | Parser | Interpreter | Comments                                  |
-|--------------------+--------+-------------+-------------------------------------------|
-| Constants          | WIP    |             | Only single numeric format is supported   |
-| Variables          | YES    | YES         |                                           |
-| Arrays             | WIP    | WIP         | Compound subscripts are not supported     |
-| Built-in variables | YES    | WIP         | See "Build-in variables"                  |
-| Field variables    | YES    | YES         |                                           |
-| Operators          | YES    | WIP         | See "Operators"                           |
-| Functions          | YES    | WIP         | Only user-defined functions are supported |
-|                    |        |             | by the run-time. See "build-in functions" |
-
+| Expressoin         | Parser | Interpreter | Comments                                |
+|--------------------+--------+-------------+-----------------------------------------|
+| Constants          | WIP    |             | Only single numeric format is supported |
+| Variables          | YES    | YES         |                                         |
+| Arrays             | WIP    | WIP         | Compound subscripts are not supported   |
+| Built-in variables | YES    | WIP         | See "Built-in variables"                |
+| Field variables    | YES    | YES         |                                         |
+| Operators          | YES    | WIP         | See "Operators"                         |
+| Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~            |
 
 ** Operators
 
@@ -58,8 +56,8 @@ Currently use ~Regex-TDFA~ as-is.
 |                   |        |             | though not yet supported by the runtime.       |
 | ~+~, ~-~          | YES    | YES         |                                                |
 | ~*~, ~/~, ~%~     | YES    | WIP         | ~%~ is unsupported                             |
-| Unary ~+~, ~-~    | YES    | NO          |                                                |
-| ~!~               | YES    | NO          |                                                |
+| Unary ~+~, ~-~    | YES    | WIP         | Only unary ~-~                                 |
+| ~!~               | YES    | YES         |                                                |
 | ~^~               | YES    | NO          |                                                |
 | ~++~, ~--~        | YES    | YES         |                                                |
 | ~$~               | YES    | YES         |                                                |
@@ -71,16 +69,16 @@ Currently use ~Regex-TDFA~ as-is.
 | Function     | Interpreter | Comments | Function           | Interpreter | Comments |
 |--------------+-------------+----------+--------------------+-------------+----------|
 | /            |             | >        | <                  |             | >        |
-| ~atan2(y,x)~ | YES         |          | ~gsub(r,s)~        | NO          |          |
-| ~cos(x)~     | YES         |          | ~gsub(r,s,t)~      | NO          |          |
+| ~atan2(y,x)~ | YES         |          | ~gsub(r,s)~        | YES         |          |
+| ~cos(x)~     | YES         |          | ~gsub(r,s,t)~      | YES         |          |
 | ~exp(x)~     | YES         |          | ~index(s,t)~       | YES         |          |
 | ~int(x)~     | YES         |          | ~length(s)~        | YES         |          |
-| ~log(x)~     | YES         |          | ~match(s,r)~       | NO          |          |
+| ~log(x)~     | YES         |          | ~match(s,r)~       | YES         |          |
 | ~rand(x)~    | YES         |          | ~split(s,a)~       | YES         |          |
 | ~sin(x)~     | YES         |          | ~split(s,a,fs)~    | YES         |          |
 | ~sqrt(x)~    | YES         |          | ~sprintf(fmt,...)~ | NO          |          |
-| ~srand()~    | YES         |          | ~sub(r,s)~         | NO          |          |
-| ~srand(x)~   | YES         |          | ~sub(r,s,t)~       | NO          |          |
+| ~srand()~    | YES         |          | ~sub(r,s)~         | YES         |          |
+| ~srand(x)~   | YES         |          | ~sub(r,s,t)~       | YES         |          |
 |              |             |          | ~substr(s,p)~      | YES         |          |
 |              |             |          | ~substr(s,p,n)~    | YES         |          |
 
