@@ -310,6 +310,58 @@ eval (FunCall "substr" [vs, vp, vn]) = do
      n <- liftM coerceToInt $ eval vn
      return $! VString $ B.take n $ B.drop (p-1) s
 
+eval (FunCall "gsub" [vr, vs]) = do
+     thisLine <- gets hcThisLine
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     let matches = getAllMatches (thisLine =~ r) :: [(MatchOffset, MatchLength)]
+         regions = invRegions matches (B.length thisLine)
+         strings = map (\(s,l) -> B.take l (B.drop s thisLine)) regions
+         result  = B.intercalate s strings
+     modify (\s -> s { hcThisLine = result })
+     reconstructThisFields result
+     return $! VDouble $ fromIntegral $ length matches
+
+eval (FunCall "gsub" [vr, vs, vt]) = do
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     t <- liftM toString $ eval vt
+     let matches = getAllMatches (t =~ r) :: [(MatchOffset, MatchLength)]
+         regions = invRegions matches (B.length t)
+         strings = map (\(s,l) -> B.take l (B.drop s t)) regions
+         result  = VString $ B.intercalate s strings
+     case vt of
+        (VariableRef s)    -> assignToVar   "=" s   result
+        (FieldRef ref)     -> assignToField "=" ref result
+        (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+     return $! VDouble $ fromIntegral $ length matches
+
+eval (FunCall "sub" [vr, vs]) = do
+     thisLine <- gets hcThisLine
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     case (thisLine =~ r) of
+          (-1, _)       -> return $! VDouble 0
+          (offset, len) -> do
+             let result = B.concat [B.take offset thisLine, s, B.drop (offset+len) thisLine]
+             modify (\s -> s { hcThisLine = result })
+             reconstructThisFields result
+             return $! VDouble 1
+
+eval (FunCall "sub" [vr, vs, vt]) = do
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     t <- liftM toString $ eval vt
+     case (t =~ r) of
+          (-1, _)       -> return $! VDouble 0
+          (offset, len) -> do
+             let result = VString $ B.concat [B.take offset t, s, B.drop (offset+len) t]
+             case vt of
+                (VariableRef s)    -> assignToVar   "=" s   result
+                (FieldRef ref)     -> assignToField "=" ref result
+                (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+             return $! VDouble 1
+
 eval (FunCall f args) = do
      mfcn <- liftM (find (func f)) $ gets hcCode
      case mfcn of
@@ -380,6 +432,15 @@ evalSplit vs fs arr = do
    modify $ (\s -> s { hcArrays = ars'' })
    return $! VDouble $ fromIntegral $ length ss
 
+-- Helper function - take a range of matches and invert it (to extract the unmatched data)
+invRegions :: [(Int,Int)] -> Int -> [(Int,Int)]
+invRegions matches len =  invRegions' matches 0 len []
+  where invRegions' [] startVal endVal res = res ++ [(startVal, endVal-startVal)]
+        invRegions' ((pStart,pLen):ps) startVal endVal res =
+          let thisRegn  = (startVal, pStart-startVal) -- point where valuable data ends
+              nextStart = pStart + pLen               -- point where next valuable data starts
+          in invRegions' ps nextStart endVal (res ++ [thisRegn])
+
 calcNewValue oldVal op arg =
      case op of
         "="  -> arg
@@ -404,6 +465,13 @@ reconstructThisLine = do
      let line = B.intercalate ofs $ map (toString . snd) thisFields
      modify (\s -> s { hcThisLine = line })
      return ()
+
+reconstructThisFields l = do
+    oldContext <- get
+    let thisFields = map VString $ B.words l
+        thisFldMap = M.fromList (zip [1,2..] thisFields)
+        thisContext = oldContext { hcFields   = thisFldMap }
+    put $! thisContext
 
 assignToVar op name val = do
      -- As the lookup, variable assignment is also special.

@@ -127,7 +127,7 @@ regex =  do
 
 fieldRef = do
    char '$'
-   e <- (numericLit <|> variableRef <|> parens expr)
+   e <- (numericLit <|> (try builtInVars) <|> variableRef <|> parens expr)
    return $ FieldRef e
    <?> "data field reference"
 
