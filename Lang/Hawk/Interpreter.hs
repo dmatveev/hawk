@@ -362,6 +362,16 @@ eval (FunCall "sub" [vr, vs, vt]) = do
                 (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
              return $! VDouble 1
 
+eval (FunCall "match" [vs, vr]) = do
+     s <- liftM toString $ eval vs
+     r <- liftM toString $ eval vr
+     let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
+         retS = VDouble $ fromIntegral $ rStart+1
+         retL = VDouble $ fromIntegral $ rLength
+     assignToBVar "=" "RSTART"  $ retS
+     assignToBVar "=" "RLENGTH" $ retL
+     return $! retS
+
 eval (FunCall f args) = do
      mfcn <- liftM (find (func f)) $ gets hcCode
      case mfcn of
