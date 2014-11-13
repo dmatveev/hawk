@@ -38,6 +38,25 @@ Currently use ~Regex-TDFA~ as-is.
 | Operators          | YES    | WIP         | See "Operators"                         |
 | Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~            |
 
+** Built-in variables
+
+| Variable   | Parser | Interpreter | Comments                              |
+|------------+--------+-------------+---------------------------------------|
+| ~ARGC~     | YES    | NO          | No command-line options handled yet   |
+| ~ARGV~     | YES    | NO          | No command-line options handled yet   |
+| ~FILENAME~ | YES    | WIP         | Only single input file is supported   |
+| ~FNR~      | YES    | WIP         | Only single input file is supported   |
+| ~FS~       | YES    | YES         |                                       |
+| ~NF~       | YES    | YES         |                                       |
+| ~NR~       | YES    | YES         |                                       |
+| ~OFMT~     | YES    | NO          | As no ~printf()~ in general           |
+| ~OFS~      | YES    | YES         |                                       |
+| ~ORS~      | YES    | YES         |                                       |
+| ~RS~       | YES    | WIP         | No regexp support                     |
+| ~RLENGTH~  | YES    | YES         |                                       |
+| ~RSTART~   | YES    | YES         |                                       |
+| ~SUBSEP~   | YES    | NO          | Compound subscripts are not supported |
+
 ** Operators
 
 | Operator          | Parser | Interpreter | Comments                                       |
@@ -49,7 +68,7 @@ Currently use ~Regex-TDFA~ as-is.
 | ~OR~              | YES    | YES         |                                                |
 | ~AND~             | YES    | YES         |                                                |
 | ~in~              | YES    | YES         |                                                |
-| =~=, =!~=         | YES    | NO          |                                                |
+| =~=, =!~=         | YES    | YES         |                                                |
 | ~<~, ~<=~, ~==~,  |        |             |                                                |
 | ~!=~, ~>=~, ~>~   | YES    | WIP         | Only for numeric values                        |
 | Concatenation     | NO     | NO          | Explicit ~:~ operator is supported by grammar, |

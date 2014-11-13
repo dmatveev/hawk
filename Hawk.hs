@@ -1,5 +1,7 @@
+import Control.Exception
 import Control.Monad (forM_)
 import Control.Monad.Trans
+import System.IO
 import System.Environment (getArgs)
 import Text.Parsec (parse)
 
@@ -12,8 +14,9 @@ runHawk progFile inputFile = do
   let ast = parse awk progFile source
   case ast of
     (Left e)  -> putStrLn $ show e
-    (Right a) -> do runInterpreter (intMain inputFile) (emptyContext a)
-                    return ()
+    (Right a) -> bracket (openFile inputFile ReadMode) hClose $ \h -> do
+         runInterpreter (intMain h inputFile) (emptyContext a)
+         return ()
 
 main :: IO ()
 main = do

@@ -17,6 +17,7 @@ import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 
 import System.Random
+import System.IO
 
 import Lang.Hawk.AST
 
@@ -57,6 +58,7 @@ emptyContext s = HawkContext
                              , ("OFS", VString " ")
                              , ("FS",  VString " ")
                              , ("ORS", VString "\n")
+                             , ("RS",  VString "\n")
                              ]
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
@@ -91,22 +93,34 @@ finalize = do
 
 
 -- This is actually an entry point to the Interpreter.
-intMain :: String -> Interpreter ()
-intMain inputFile = do
-    input <- liftIO $ BL.readFile inputFile
+intMain :: Handle -> String -> Interpreter ()
+intMain h inputFile = do
     assignToBVar "=" "FILENAME" (VString $ B.pack inputFile)
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
        let k = emptyKBlock {kExit = ex}
-           nextLine kk [] = ex ()
-           nextLine kk (s:ss) = do
-              let k' = kk { kNext = \_ -> nextLine k' ss }
-              seq k' $ processLine k' (BL.toStrict s)
-              nextLine k' ss
-       nextLine k (BL.lines input)
+       readLoop k B.empty False
        ex ()
     finalize
+  where
+    readLoop k thisBuf eof = do
+      rs <- liftM toString $ eval (BuiltInVar "RS")
+      let nrs = B.length rs
+      case B.breakSubstring rs thisBuf of
+         (l, rest) | B.null l && B.null rest && eof ->
+                        return ()
+                   | B.null rest && eof -> do
+                        let k' = k { kNext = (const $ return ()) }
+                        seq k' $ processLine k' l
+                   | B.null rest && not eof -> do
+                        nextChunk <- liftIO $ B.hGet h 8192
+                        readLoop k (B.append thisBuf nextChunk) (B.null nextChunk)  
+                   | otherwise -> do
+                        let r' = B.drop nrs rest
+                            k' = k { kNext = \_ -> readLoop k' r' eof } 
+                        seq k' $ processLine k' l
+                        readLoop k' r' eof
 
 
 -- processLine takes a new (next) line from input stream, prepares
@@ -114,8 +128,8 @@ intMain inputFile = do
 processLine :: KBlock -> B.ByteString -> Interpreter ()
 processLine k s = do
     oldContext <- get
-    let thisFields = map VString $ B.words s
-        thisFldMap = M.fromList (zip [1,2..] thisFields)
+    thisFields <- liftM (map VString) $ splitIntoFields s
+    let thisFldMap = M.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s
                                  , hcFields   = thisFldMap
                                  }
@@ -130,6 +144,15 @@ processLine k s = do
          Nothing  -> (PRINT [])
          (Just s) -> s
 
+splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
+splitIntoFields str = do
+   fs <- liftM toString $ eval (BuiltInVar "FS")
+   let fields | fs == " " = B.words str                        -- Handles ' ' and '\t'
+              | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
+              | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
+                                rs = invRegions ms (B.length str)
+                            in map (\(s,l) -> B.take l (B.drop s str)) rs
+   return $! fields        
 
 -- Checks if the given top-level form matches the current line
 matches :: TopLevel -> Interpreter Bool
@@ -410,6 +433,7 @@ eval (Assignment op p v) = do
        (FieldRef ref)     -> assignToField op ref  val
        (VariableRef name) -> assignToVar   op name val
        (ArrayRef arr ref) -> assignToArr   op arr ref val
+       (BuiltInVar name)  -> assignToBVar  op name val
        otherwise -> fail "Only to-field and to-variable assignments are supported"
 
 proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
@@ -417,8 +441,8 @@ proxyFcn f e = do
      d <- liftM coerceToDouble $ eval e
      return $! VDouble $ f d
 
-splitWith :: B.ByteString -> B.ByteString -> [B.ByteString]
-splitWith s fs = reverse $! splitWith' s []
+hawkSplitWith :: B.ByteString -> B.ByteString -> [B.ByteString]
+hawkSplitWith s fs = reverse $! splitWith' s []
   where
     splitWith' str res = case B.breakSubstring fs str of
        (x, y) | B.null y  -> x:res
@@ -428,7 +452,7 @@ splitWith s fs = reverse $! splitWith' s []
 evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
 evalSplit vs fs arr = do
    s <- liftM toString $ eval vs
-   let ss = s `splitWith` fs
+   let ss = s `hawkSplitWith` fs
        is = [1, 2..]
    ars <- gets hcArrays
    let -- at first, clear the array from its previous contents
