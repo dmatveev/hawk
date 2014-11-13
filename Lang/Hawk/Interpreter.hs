@@ -3,6 +3,7 @@
 module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Text.Regex.TDFA
 
 import Data.List (find, intercalate)
@@ -92,7 +93,7 @@ finalize = do
 -- This is actually an entry point to the Interpreter.
 intMain :: String -> Interpreter ()
 intMain inputFile = do
-    input <- liftIO $ B.readFile inputFile
+    input <- liftIO $ BL.readFile inputFile
     assignToBVar "=" "FILENAME" (VString $ B.pack inputFile)
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
@@ -101,9 +102,9 @@ intMain inputFile = do
            nextLine kk [] = ex ()
            nextLine kk (s:ss) = do
               let k' = kk { kNext = \_ -> nextLine k' ss }
-              seq k' $ processLine k' s
+              seq k' $ processLine k' (BL.toStrict s)
               nextLine k' ss
-       nextLine k (B.lines input)
+       nextLine k (BL.lines input)
        ex ()
     finalize
 
