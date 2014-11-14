@@ -3,7 +3,7 @@
 module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy.Char8 as BL
+
 import Text.Regex.TDFA
 
 import Data.List (find, intercalate)
@@ -15,6 +15,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Cont
 import Control.Monad.Trans
 import qualified Data.Map.Lazy as M
+import qualified Data.IntMap as IM
 
 import System.Random
 import System.IO
@@ -27,7 +28,7 @@ data Value = VString !B.ByteString
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
-                 , hcFields   :: (M.Map Int Value)
+                 , hcFields   :: (IM.IntMap Value)
                  , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcBVars    :: !(M.Map String Value)
@@ -40,10 +41,14 @@ data HawkContext = HawkContext
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m
 
+(*!!) :: IM.IntMap Value -> Int -> Value
+m *!! k = IM.findWithDefault (VDouble 0) k m
+
+
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcCode     = s
-                 , hcFields   = M.empty
+                 , hcFields   = IM.empty
                  , hcVars     = M.empty
                  , hcArrays   = M.empty
                  , hcBVars    = M.fromList initialBuiltInVars
@@ -129,7 +134,7 @@ processLine :: KBlock -> B.ByteString -> Interpreter ()
 processLine k s = do
     oldContext <- get
     thisFields <- liftM (map VString) $ splitIntoFields s
-    let thisFldMap = M.fromList (zip [1,2..] thisFields)
+    let thisFldMap = IM.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s
                                  , hcFields   = thisFldMap
                                  }
@@ -194,7 +199,7 @@ eval (FieldRef e) = do
      if i == 0
      then gets hcThisLine >>= (return . VString)
      else do fs <- gets hcFields
-             return $! fs M.! i
+             return $! fs IM.! i
 
 eval (VariableRef s) = do
      -- Variable lookup is special, since we may have an hierarchy
@@ -488,14 +493,14 @@ calcNewValue oldVal op arg =
 assignToField op ref val = do
      i <- liftM coerceToInt $! eval ref
      oldFields <- gets hcFields
-     let newValue  = calcNewValue (oldFields *! i) op val
-         newFields = M.insert i newValue oldFields
+     let newValue  = calcNewValue (oldFields *!! i) op val
+         newFields = IM.insert i newValue oldFields
      modify (\s -> s { hcFields = newFields })
      reconstructThisLine
      return $! newValue
 
 reconstructThisLine = do
-     thisFields <- gets (M.toList . hcFields)
+     thisFields <- gets (IM.toList . hcFields)
      ofs        <- liftM toString $ eval (BuiltInVar "OFS")
      let line = B.intercalate ofs $ map (toString . snd) thisFields
      modify (\s -> s { hcThisLine = line })
@@ -504,8 +509,8 @@ reconstructThisLine = do
 reconstructThisFields l = do
     oldContext <- get
     let thisFields = map VString $ B.words l
-        thisFldMap = M.fromList (zip [1,2..] thisFields)
-        thisContext = oldContext { hcFields   = thisFldMap }
+        thisFldMap = IM.fromList (zip [1,2..] thisFields)
+        thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
 assignToVar op name val = do
