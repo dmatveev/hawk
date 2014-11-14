@@ -27,13 +27,13 @@ data Value = VString !B.ByteString
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
-                 , hcFields   :: !(M.Map Int Value)
+                 , hcFields   :: (M.Map Int Value)
                  , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcBVars    :: !(M.Map String Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
-                 , hcThisLine :: !B.ByteString
+                 , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
                  }
 
