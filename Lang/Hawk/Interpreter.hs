@@ -14,7 +14,7 @@ import GHC.Float (floatToDigits)
 import Control.Monad.State.Strict
 import Control.Monad.Cont
 import Control.Monad.Trans
-import qualified Data.Map.Strict as M
+import qualified Data.Map.Lazy as M
 
 import System.Random
 import System.IO
@@ -152,7 +152,7 @@ splitIntoFields str = do
               | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
                                 rs = invRegions ms (B.length str)
                             in map (\(s,l) -> B.take l (B.drop s str)) rs
-   return $! fields        
+   return fields
 
 -- Checks if the given top-level form matches the current line
 matches :: TopLevel -> Interpreter Bool
