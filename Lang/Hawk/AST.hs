@@ -22,12 +22,14 @@ data Expression = Arith Op Expression Expression
                 | Relation Op Expression Expression
                 | Not Expression
                 | Neg Expression
+                | Id Expression
                 | Concat Expression Expression
                 | In Expression Expression
                 | Logic Op Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
                 | FunCall String [Expression]
+                | InlineIf Expression Expression Expression
                   deriving (Eq, Show)
 
 data Statement = Expression Expression

@@ -6,6 +6,7 @@ import qualified Data.ByteString.Char8 as B
 
 import Text.Regex.TDFA
 
+import Data.Fixed (mod')
 import Data.List (find, intercalate)
 import Data.Maybe (fromJust, fromMaybe)
 
@@ -188,11 +189,15 @@ eval (Arith op le re) = do
           "/" -> return $! VDouble (l / r)
           "+" -> return $! VDouble (l + r)
           "-" -> return $! VDouble (l - r)
+          "%" -> return $! VDouble (mod' l r)
+          "^" -> return $! VDouble (l ** r)
           otherwise -> fail $ "Unsupported arith operator " ++ op
 
 eval (Const (LitNumeric i)) = return $! VDouble i
 eval (Const (LitStr s))     = return $! VString $ B.pack s
 eval (Const (LitRE s))      = return $! VString $ B.pack s
+
+eval (Id e) = eval e
 
 eval (FieldRef e) = do
      i <- liftM coerceToInt $ eval e
@@ -432,6 +437,10 @@ eval (FunCall f args) = do
      func s (Function ss _ _) = s == ss
      func s _                 = False
 
+eval (InlineIf c t e) = do
+     b <- liftM coerceToBool $! eval c
+     if b then eval t else eval e
+
 eval (Assignment op p v) = do
      val <- eval v
      case p of
@@ -488,6 +497,7 @@ calcNewValue oldVal op arg =
         "-=" -> VDouble $! coerceToDouble oldVal - coerceToDouble arg
         "*=" -> VDouble $! coerceToDouble oldVal * coerceToDouble arg
         "/=" -> VDouble $! coerceToDouble oldVal / coerceToDouble arg
+        "%=" -> VDouble $! coerceToDouble oldVal `mod'` coerceToDouble arg
         otherwise -> undefined
 
 assignToField op ref val = do

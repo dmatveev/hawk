@@ -61,7 +61,7 @@ Currently use ~Regex-TDFA~ as-is.
 
 | Operator          | Parser | Interpreter | Comments                                       |
 |-------------------+--------+-------------+------------------------------------------------|
-| ~=~,  ~+=~, ~-=~, | YES    | WIP         | ~%=~ and ~^=~ are not supported                |
+| ~=~,  ~+=~, ~-=~, | YES    | YES         |                                                |
 | ~*=~, ~/=~,       |        |             |                                                |
 | ~%=~, ~^=~        |        |             |                                                |
 | ~? :~             | NO     |             | Ternary operator is not supported              |
@@ -74,10 +74,10 @@ Currently use ~Regex-TDFA~ as-is.
 | Concatenation     | NO     | NO          | Explicit ~:~ operator is supported by grammar, |
 |                   |        |             | though not yet supported by the runtime.       |
 | ~+~, ~-~          | YES    | YES         |                                                |
-| ~*~, ~/~, ~%~     | YES    | WIP         | ~%~ is unsupported                             |
-| Unary ~+~, ~-~    | YES    | WIP         | Only unary ~-~                                 |
+| ~*~, ~/~, ~%~     | YES    | YES         |                                                |
+| Unary ~+~, ~-~    | YES    | WIP         | Some issues with parsing ~+$1~ and ~-$1~       |
 | ~!~               | YES    | YES         |                                                |
-| ~^~               | YES    | NO          |                                                |
+| ~^~               | YES    | YES         |                                                |
 | ~++~, ~--~        | YES    | YES         |                                                |
 | ~$~               | YES    | YES         |                                                |
 | ~()~              | YES    | YES         | No support required on the interpreter side.   |

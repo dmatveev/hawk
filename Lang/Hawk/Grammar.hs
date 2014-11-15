@@ -165,7 +165,7 @@ table = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
           , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
         , [arith "^"]
         , [prefix "!" Not]
-        , [prefix "-" Neg]
+        , [prefix "-" Neg, prefix "+" Id]
         , [arith "*", arith "/", arith "%" ]
         , [arith "+", arith "-" ]
         , [binary ":" Concat AssocRight] -- explicit concatenation operator
