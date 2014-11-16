@@ -18,7 +18,7 @@ import Data.Maybe (fromJust)
 import Control.Monad.State.Strict
 import Control.Monad.Cont
 import Control.Monad.Trans
-import qualified Data.Map.Lazy as M
+import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 
 import System.Random
@@ -108,7 +108,7 @@ finalize = do
     forM_ actions $ \(Section _ ms) -> do
       case ms of
         Nothing  -> return ()
-        (Just s) -> exec emptyKBlock s
+        (Just s) -> {-# SCC "execFIN" #-} exec emptyKBlock s
   where isEnd (Section (Just END) _) = return True
         isEnd _                      = return False
 
@@ -208,7 +208,7 @@ eval (Incr n a@(ArrayRef    s e))    = incrArr n a
 eval (Decr n f@(FieldRef      e))    = decrField n f
 eval (Decr n v@(VariableRef s  ))    = decrVar n v
 eval (Decr n a@(ArrayRef    s e))    = decrArr n a
-eval (Relation op le re)             = evalCmp op re le
+eval (Relation op le re)             = evalCmp op le re
 eval (Not e)                         = evalNot e 
 eval (Neg e)                         = evalNeg e
 eval (Concat _ _ )                   = unsup "Concatenations"
@@ -351,21 +351,21 @@ decrArr n arr@(ArrayRef name ref) = do
 
 -- Execute a statement
 exec :: KBlock -> Statement -> Interpreter ()
-exec _ (Expression e) = eval e >> return ()
-exec k (Block es)     = mapM_ (exec k) es
-exec k (IF c t me)    = execIF k c t me
-exec k w@(WHILE c s)  = execWHILE k w c s 
-exec k (FOR i c st s) = execFOR k i c st s
-exec k d@(DO s c)     = execDO k d s c 
-exec k f@(FOREACH v@(VariableRef vname) arr st) = execFOREACH k f v vname arr st
-exec _ (PRINT es)     = execPRINT es
-exec k (BREAK)        = (kBreak k) ()
-exec k (CONT)         = (kCont  k) ()
-exec k (NEXT)         = (kNext  k) ()
-exec k (EXIT _)       = (kExit  k) () -- TODO argument
-exec k (RETURN me)    = execRET k me
-exec _ (NOP)          = return ()
-exec _ (DELETE e)     = execDEL e
+exec _ (Expression e) = {-# SCC "execEXPR"  #-} eval e >> return ()
+exec k (Block es)     = {-# SCC "execBLOCK" #-} mapM_ (exec k) es
+exec k (IF c t me)    = {-# SCC "execIF"    #-} execIF k c t me
+exec k w@(WHILE c s)  = {-# SCC "execWHILE" #-} execWHILE k w c s 
+exec k (FOR i c st s) = {-# SCC "execFOR"   #-} execFOR k i c st s
+exec k d@(DO s c)     = {-# SCC "execDO"    #-} execDO k d s c 
+exec k f@(FOREACH v@(VariableRef vname) arr st) = {-# SCC "execFE" #-} execFOREACH k f v vname arr st
+exec _ (PRINT es)     = {-# SCC "execPRINT" #-} execPRINT es
+exec k (BREAK)        = {-# SCC "execBREAK" #-} (kBreak k) ()
+exec k (CONT)         = {-# SCC "execCONT"  #-} (kCont  k) ()
+exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
+exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
+exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
+exec _ (NOP)          = {-# SCC "execNOP"   #-} return ()
+exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
 
 evalArith op le re = do
@@ -412,12 +412,12 @@ evalCmp op le re = do
      l <- eval le
      r <- eval re
      return $! VDouble $ test $ case (l, r) of
-        (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
-           -- If the both strings represent numbers completely
-          if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
-        (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
-        (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
-        (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
+         (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
+            -- If the both strings represent numbers completely
+           if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
+         (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
+         (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
+         (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
   where
     cmp op l r = case op of
        "==" -> l == r
