@@ -1,19 +1,19 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, OverloadedStrings #-}
 
-module Lang.Hawk.Interpreter where
+module Lang.Hawk.Interpreter
+    ( runInterpreter
+    , intMain
+    , emptyContext
+    ) where
 
-import Control.Applicative ((<*))
-
-import qualified Data.Attoparsec.ByteString.Char8 as AP
 import qualified Data.ByteString.Char8 as B
 
 import Text.Regex.TDFA
 
 import Data.Fixed (mod')
-import Data.List (find, intercalate)
-import Data.Maybe (fromJust, fromMaybe)
 
-import GHC.Float (floatToDigits)
+import Data.List (find, intercalate)
+import Data.Maybe (fromJust)
 
 import Control.Monad.State.Strict
 import Control.Monad.Cont
@@ -25,22 +25,8 @@ import System.Random
 import System.IO
 
 import Lang.Hawk.AST
-
-data Value = VString !B.ByteString !Double !Bool
-           | VDouble !Double
-             deriving (Eq, Show)
-
-valstr :: B.ByteString -> Value
-valstr s = VString s n b
-  where (n,b) = case AP.parse (AP.skipSpace >> AP.double <* AP.skipSpace) s of
-                (AP.Partial f) -> case (f "") of
-                  (AP.Done _ r) -> (  r,  True) -- The entire string is parsed as number
-                  otherwise     -> (0.0, False) -- The impossible case?
-                (AP.Done _ r)   -> (  r, False) -- Only a part of string is parsed as number
-                (AP.Fail _ _ _) -> (0.0, False) -- Not a number at all
-
-defstr :: B.ByteString -> Value
-defstr s = VString s 0.0 False
+import Lang.Hawk.Value
+import Lang.Hawk.Utils
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
@@ -53,6 +39,21 @@ data HawkContext = HawkContext
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
                  }
+
+data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
+                     , kExit  :: !(() -> Interpreter ())
+                     , kRet   :: !(Maybe Value -> Interpreter ())
+                     , kCont  :: !(() -> Interpreter ())
+                     , kBreak :: !(() -> Interpreter ())
+                     }
+
+emptyKBlock :: KBlock
+emptyKBlock = KBlock { kNext  = return
+                     , kExit  = return
+                     , kRet   = \_ -> return ()
+                     , kCont  = return
+                     , kBreak = return
+                     }
 
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m
@@ -84,7 +85,6 @@ emptyContext s = HawkContext
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
                         deriving (Monad, MonadIO, MonadCont, MonadState HawkContext)
-
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
@@ -184,7 +184,7 @@ matches (Section (Just p) _) = patternMatches p
 patternMatches :: Pattern -> Interpreter Bool
 patternMatches BEGIN    = return False
 patternMatches END      = return False
-patternMatches (EXPR e) = liftM coerceToBool $! eval e
+patternMatches (EXPR e) = liftM toBool $! eval e
 patternMatches (RE s)   = gets hcThisLine >>= \l -> return $! l =~ s
 patternMatches _        = return False -- Not supported yet
 
@@ -193,336 +193,61 @@ unsup s = fail $ s ++ " are not yet supported"
 
 -- Evaluate an expression, return the result
 eval :: Expression -> Interpreter Value
-
-eval (Arith op le re) = do
-     l <- liftM coerceToDouble $! eval le
-     r <- liftM coerceToDouble $! eval re
-     case op of
-          "*" -> return $! VDouble (l * r)
-          "/" -> return $! VDouble (l / r)
-          "+" -> return $! VDouble (l + r)
-          "-" -> return $! VDouble (l - r)
-          "%" -> return $! VDouble (mod' l r)
-          "^" -> return $! VDouble (l ** r)
-          otherwise -> fail $ "Unsupported arith operator " ++ op
-
-eval (Const (LitNumeric i)) = return $! VDouble i
-eval (Const (LitStr s))     = return $! valstr $ B.pack s
-eval (Const (LitRE s))      = return $! valstr $ B.pack s
-
-eval (Id e) = eval e
-
-eval (FieldRef e) = do
-     i <- liftM coerceToInt $ eval e
-     if i == 0
-     then gets hcThisLine >>= (return . valstr)
-     else do fs <- gets hcFields
-             return $! fs IM.! i
-
-eval (VariableRef s) = do
-     -- Variable lookup is special, since we may have an hierarchy
-     -- of scopes with its personal variables (in function calls).
-     -- So it first we do lookup in stack top, and then in the global
-     -- dictionary.
-     st <- gets hcStack
-     vs <- gets hcVars
-     let globalVal = vs *! s
-     return $! case st of
-       (f:_)     -> M.findWithDefault globalVal s f
-       otherwise -> globalVal
-
-eval (BuiltInVar s) = do
-     bvs <- gets hcBVars
-     return $! bvs *! s
-
-eval (ArrayRef s e) = do
-     idx <- liftM toString $! eval e
-     ars <- gets hcArrays
-     return $! ars *! (s, B.unpack idx)
-
-eval (Incr n f@(FieldRef e))    = incrField n f
-eval (Incr n v@(VariableRef s)) = incrVar   n v
-eval (Incr n a@(ArrayRef s e))  = incrArr   n a
-eval (Decr n f@(FieldRef e))    = decrField n f
-eval (Decr n v@(VariableRef s)) = decrVar   n v
-eval (Decr n a@(ArrayRef s e))  = decrArr   n a
-
-eval (Relation op le re) = do
-     l <- eval le
-     r <- eval re
-     return $! VDouble $ test $ case (l, r) of
-        (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
-           -- If the both strings represent numbers completely
-          if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
-        (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
-        (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
-        (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
-  where
-    cmp op l r = case op of
-       "==" -> l == r
-       "!=" -> l /= r
-       ">"  -> l >  r
-       ">=" -> l >= r
-       "<"  -> l <  r
-       "<=" -> l <= r
-       otherwise -> error $ "Unsupported cmp operator " ++ op
-    test b = if b then 1 else 0
-
-eval (Not e) = do
-     b <- liftM coerceToBool $! eval e
-     return $! VDouble (if b then 0.0 else 1.0)
-
-eval (Neg e) = do
-     d <- liftM coerceToDouble $! eval e
-     return $! VDouble (- d)
-
-eval (Concat _ _ )  = unsup "Concatenations"
-
--- In a membership test, array name is parsed as an ordinary variable reference.
--- TODO: Check in grammar
-eval (In s (VariableRef arr)) = do
-     arrs   <- gets hcArrays
-     subscr <- liftM toString $ eval s
-     return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
-  where test b = if b then 1 else 0
-eval (In _ _) = fail $ "Incorrect membership test syntax"
-
-eval (Logic op le re) = do
-     l <- liftM coerceToBool $! eval le
-     r <- liftM coerceToBool $! eval re
-     case op of
-          "&&" -> return $! VDouble $ test (l && r)
-          "||" -> return $! VDouble $ test (l || r)
-          otherwise -> fail $ "Unsupported logical operator " ++ op
-   where test b = if b then 1 else 0
-
-
-eval (Match s re) = do
-     l <- liftM toString $! eval s
-     r <- liftM toString $! eval re
-     let rv = if r /= "" && l =~ r then 1.0 else 0.0
-     return $! VDouble rv
-
-eval (NoMatch s re) = do
-     l <- liftM toString $! eval s
-     r <- liftM toString $! eval re
-     let rv = if r /= "" && l =~ r then 0.0 else 1.0
-     return $! VDouble rv
-
-eval (FunCall "atan2" [vy, vx]) = do
-     y <- liftM coerceToDouble $! eval vy
-     x <- liftM coerceToDouble $! eval vx
-     return $! VDouble $ atan2 y x
-
-eval (FunCall "cos"  [vx]) = proxyFcn cos vx
-eval (FunCall "exp"  [vx]) = proxyFcn exp vx
-eval (FunCall "int"  [vx]) = proxyFcn (fromIntegral . truncate) vx
-eval (FunCall "log"  [vx]) = proxyFcn log vx
-eval (FunCall "sin"  [vx]) = proxyFcn sin vx
-eval (FunCall "sqrt" [vx]) = proxyFcn sqrt vx
-
-eval (FunCall "srand" vss) = do
-     g <- case vss of
-       [vs] -> liftM (mkStdGen . coerceToInt) $! eval vs
-       []   -> liftIO getStdGen
-     modify $ (\s -> s { hcStdGen = g })
-     return $! VDouble 0 -- TODO: srand return value?
-
-eval (FunCall "rand" []) = do
-     g <- gets hcStdGen
-     let (r, g') = randomR (0.0, 1.0) g
-     modify $ (\s -> s { hcStdGen = g' })
-     return $! VDouble r
-
-eval (FunCall "index" [vs, vt]) = do
-     s <- liftM toString $! eval vs
-     t <- liftM toString $! eval vt
-     let (x, y) = B.breakSubstring t s
-     return $! if B.null y
-               then VDouble 0
-               else VDouble $ fromIntegral $ 1 + B.length x
-
-eval (FunCall "length" [vs]) = do
-     s <- liftM toString $! eval vs
-     return $! VDouble $ fromIntegral $ B.length s
-
-eval (FunCall "split" [vs, (VariableRef a)]) = do
-     fs <- liftM toString $ eval (BuiltInVar "FS")
-     evalSplit vs fs a
-
-eval (FunCall "split" [vs, (VariableRef a), vfs]) = do
-     fs <- liftM toString $ eval vfs
-     evalSplit vs fs a
-
-eval (FunCall "substr" [vs, vp]) = do
-     s <- liftM toString    $ eval vs
-     p <- liftM coerceToInt $ eval vp
-     return $! valstr $ B.drop (p-1) s
-
-eval (FunCall "substr" [vs, vp, vn]) = do
-     s <- liftM toString    $ eval vs
-     p <- liftM coerceToInt $ eval vp
-     n <- liftM coerceToInt $ eval vn
-     return $! valstr $ B.take n $ B.drop (p-1) s
-
-eval (FunCall "gsub" [vr, vs]) = do
-     thisLine <- gets hcThisLine
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     let matches = getAllMatches (thisLine =~ r) :: [(MatchOffset, MatchLength)]
-         regions = invRegions matches (B.length thisLine)
-         strings = map (\(s,l) -> B.take l (B.drop s thisLine)) regions
-         result  = B.intercalate s strings
-     modify (\s -> s { hcThisLine = result })
-     reconstructThisFields result
-     return $! VDouble $ fromIntegral $ length matches
-
-eval (FunCall "gsub" [vr, vs, vt]) = do
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     t <- liftM toString $ eval vt
-     let matches = getAllMatches (t =~ r) :: [(MatchOffset, MatchLength)]
-         regions = invRegions matches (B.length t)
-         strings = map (\(s,l) -> B.take l (B.drop s t)) regions
-         result  = valstr $ B.intercalate s strings
-     case vt of
-        (VariableRef s)    -> assignToVar   "=" s   result
-        (FieldRef ref)     -> assignToField "=" ref result
-        (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
-     return $! VDouble $ fromIntegral $ length matches
-
-eval (FunCall "sub" [vr, vs]) = do
-     thisLine <- gets hcThisLine
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     case (thisLine =~ r) of
-          (-1, _)       -> return $! VDouble 0
-          (offset, len) -> do
-             let result = B.concat [B.take offset thisLine, s, B.drop (offset+len) thisLine]
-             modify (\s -> s { hcThisLine = result })
-             reconstructThisFields result
-             return $! VDouble 1
-
-eval (FunCall "sub" [vr, vs, vt]) = do
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     t <- liftM toString $ eval vt
-     case (t =~ r) of
-          (-1, _)       -> return $! VDouble 0
-          (offset, len) -> do
-             let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
-             case vt of
-                (VariableRef s)    -> assignToVar   "=" s   result
-                (FieldRef ref)     -> assignToField "=" ref result
-                (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
-             return $! VDouble 1
-
-eval (FunCall "match" [vs, vr]) = do
-     s <- liftM toString $ eval vs
-     r <- liftM toString $ eval vr
-     let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
-         retS = VDouble $ fromIntegral $ rStart+1
-         retL = VDouble $ fromIntegral $ rLength
-     assignToBVar "=" "RSTART"  $ retS
-     assignToBVar "=" "RLENGTH" $ retL
-     return $! retS
-
-eval (FunCall f args) = do
-     mfcn <- liftM (find (func f)) $ gets hcCode
-     case mfcn of
-       (Just (Function _ argNames stmt)) -> do
-           -- Build a stack frame for function call first
-           argVals <- mapM eval args
-           let numArgs = length argNames
-               numVals = length argVals
-               numLocs = numArgs - numVals
-
-               boundArgs = zip argNames argVals
-               localVars = if numLocs > 0
-                           then zip (drop numVals argNames) $ repeat (VDouble 0)
-                           else []
-               newStackFrame = M.fromList $! boundArgs ++ localVars
-
-           oldStack <- gets hcStack
-           modify $ (\s -> s { hcStack = newStackFrame:oldStack, hcRetVal = VDouble 0 })
-           callCC $ \ret -> do
-              let retHook (Just v) = modify (\s -> s { hcRetVal = v }) >> ret ()
-                  retHook Nothing  = ret ()
-                  k = seq retHook $ emptyKBlock {kRet = retHook}
-              exec k stmt
-           modify $ (\s -> s { hcStack = oldStack })
-           gets hcRetVal
-       Nothing    -> fail $ f ++ " - unknown function"
-       otherwise  -> fail $ "Fatal error when invoking function " ++ f
-  where
-     func s (Function ss _ _) = s == ss
-     func s _                 = False
-
-eval (InlineIf c t e) = do
-     b <- liftM coerceToBool $! eval c
-     if b then eval t else eval e
-
-eval (Assignment op p v) = do
-     val <- eval v
-     case p of
-       (FieldRef ref)     -> assignToField op ref  val
-       (VariableRef name) -> assignToVar   op name val
-       (ArrayRef arr ref) -> assignToArr   op arr ref val
-       (BuiltInVar name)  -> assignToBVar  op name val
-       otherwise -> fail "Only to-field and to-variable assignments are supported"
+eval (Arith op le re)                = evalArith op le re
+eval (Const (LitNumeric i))          = return $! VDouble i
+eval (Const (LitStr     s))          = return $! valstr $ B.pack s
+eval (Const (LitRE      s))          = return $! valstr $ B.pack s
+eval (Id          e)                 = eval e
+eval (FieldRef    e)                 = evalFieldRef e
+eval (VariableRef s)                 = evalVariableRef s
+eval (BuiltInVar  s)                 = evalBVariableRef s 
+eval (ArrayRef    s e)               = evalArrRef s e
+eval (Incr n f@(FieldRef      e))    = incrField n f
+eval (Incr n v@(VariableRef s  ))    = incrVar n v
+eval (Incr n a@(ArrayRef    s e))    = incrArr n a
+eval (Decr n f@(FieldRef      e))    = decrField n f
+eval (Decr n v@(VariableRef s  ))    = decrVar n v
+eval (Decr n a@(ArrayRef    s e))    = decrArr n a
+eval (Relation op le re)             = evalCmp op re le
+eval (Not e)                         = evalNot e 
+eval (Neg e)                         = evalNeg e
+eval (Concat _ _ )                   = unsup "Concatenations"
+eval (In s (VariableRef arr))        = evalArrTest s arr
+eval (In _ _)                        = fail $ "Incorrect membership test syntax"
+eval (Logic op le re)                = evalLogic op le re
+eval (Match s re)                    = evalMatch s re
+eval (NoMatch s re)                  = evalNoMatch s re
+eval (FunCall "atan2"  [vy, vx])     = evalAtan2 vy vx
+eval (FunCall "cos"    [vx])         = proxyFcn cos vx
+eval (FunCall "exp"    [vx])         = proxyFcn exp vx
+eval (FunCall "int"    [vx])         = proxyFcn (fromIntegral . truncate) vx
+eval (FunCall "log"    [vx])         = proxyFcn log vx
+eval (FunCall "sin"    [vx])         = proxyFcn sin vx
+eval (FunCall "sqrt"   [vx])         = proxyFcn sqrt vx
+eval (FunCall "srand"  vss)          = evalSRand vss
+eval (FunCall "rand"   [])           = evalRand
+eval (FunCall "index"  [vs, vt])     = evalIndex vs vt
+eval (FunCall "length" [vs])         = evalLength vs
+eval (FunCall "split"  [vs, (VariableRef a)])      = evalSplitFS vs a
+eval (FunCall "split"  [vs, (VariableRef a), vfs]) = evalSplitVar vs a vfs
+eval (FunCall "substr" [vs, vp])     = evalSubstr vs vp
+eval (FunCall "substr" [vs, vp, vn]) = evalSubstr2 vs vp vn
+eval (FunCall "gsub"   [vr, vs])     = evalGSub vr vs
+eval (FunCall "gsub"   [vr, vs, vt]) = evalGSubVar vr vs vt
+eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
+eval (FunCall "sub"    [vr, vs, vt]) = evalSubVar vr vs vt
+eval (FunCall "match"  [vs, vr])     = evalFMatch vs vr
+eval (FunCall f args)                = evalFunCall f args
+eval (Assignment op p v)             = evalAssign op p v
 
 proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
 proxyFcn f e = do
-     d <- liftM coerceToDouble $ eval e
+     d <- liftM toDouble $ eval e
      return $! VDouble $ f d
 
-hawkSplitWith :: B.ByteString -> B.ByteString -> [B.ByteString]
-hawkSplitWith s fs = reverse $! splitWith' s []
-  where
-    splitWith' str res = case B.breakSubstring fs str of
-       (x, y) | B.null y  -> x:res
-              | otherwise -> splitWith' (B.drop nfs y) (x:res)
-    nfs = B.length fs
-
-evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
-evalSplit vs fs arr = do
-   s <- liftM toString $ eval vs
-   let ss = s `hawkSplitWith` fs
-       is = [1, 2..]
-   ars <- gets hcArrays
-   let -- at first, clear the array from its previous contents
-       -- TODO: very slow, when we have all arrays in a single Data.Map
-       ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
-       -- Form a new array containing extracted values
-       keys  = map (arr,)  $ (map show is)
-       strs  = map valstr  $ ss
-       res   = M.fromList $ zip keys strs
-       -- Put our new values then
-       ars'' = M.union ars' res
-   modify $ (\s -> s { hcArrays = ars'' })
-   return $! VDouble $ fromIntegral $ length ss
-
--- Helper function - take a range of matches and invert it (to extract the unmatched data)
-invRegions :: [(Int,Int)] -> Int -> [(Int,Int)]
-invRegions matches len =  invRegions' matches 0 len []
-  where invRegions' [] startVal endVal res = res ++ [(startVal, endVal-startVal)]
-        invRegions' ((pStart,pLen):ps) startVal endVal res =
-          let thisRegn  = (startVal, pStart-startVal) -- point where valuable data ends
-              nextStart = pStart + pLen               -- point where next valuable data starts
-          in invRegions' ps nextStart endVal (res ++ [thisRegn])
-
-calcNewValue oldVal op arg =
-     case op of
-        "="  -> arg
-        "+=" -> VDouble $! coerceToDouble oldVal + coerceToDouble arg
-        "-=" -> VDouble $! coerceToDouble oldVal - coerceToDouble arg
-        "*=" -> VDouble $! coerceToDouble oldVal * coerceToDouble arg
-        "/=" -> VDouble $! coerceToDouble oldVal / coerceToDouble arg
-        "%=" -> VDouble $! coerceToDouble oldVal `mod'` coerceToDouble arg
-        otherwise -> undefined
 
 assignToField op ref val = do
-     i <- liftM coerceToInt $! eval ref
+     i <- liftM toInt $! eval ref
      if i == 0
      then do
           thisLine <- gets hcThisLine
@@ -624,92 +349,333 @@ decrArr n arr@(ArrayRef name ref) = do
    newVal <- assignToArr "-=" name ref (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
--- Coercions and conversions
-coerceToBool :: Value -> Bool
-coerceToBool (VString "" _ _) = False
-coerceToBool (VDouble 0)      = False
-coerceToBool _                = True
-
-coerceToDouble :: Value -> Double
-coerceToDouble (VDouble d)      = d
-coerceToDouble (VString "" _ _) = 0.0
-coerceToDouble (VString _  d _) = d
-
-coerceToInt :: Value -> Int
-coerceToInt (VDouble d)      = truncate d
-coerceToInt (VString "" _ _) = 0
-coerceToInt (VString _  d _) = truncate d
-
-toString :: Value -> B.ByteString
-toString (VString s _ _) = s
-toString (VDouble d) =
-    let s | rs == [0] && p == 0 = "0"
-          | p >= 0 && nrs <= p  = sgn ++ (concat $ map show rs) ++ take (p-nrs) (repeat '0')
-          | otherwise           = show d
-    in B.pack s
-  where (rs,p) = floatToDigits 10 (abs d)
-        nrs = length rs
-        sgn = if d >= 0 then "" else "-"
-
-data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
-                     , kExit  :: !(() -> Interpreter ())
-                     , kRet   :: !(Maybe Value -> Interpreter ())
-                     , kCont  :: !(() -> Interpreter ())
-                     , kBreak :: !(() -> Interpreter ())
-                     }
-
-emptyKBlock :: KBlock
-emptyKBlock = KBlock { kNext  = return
-                     , kExit  = return
-                     , kRet   = \_ -> return ()
-                     , kCont  = return
-                     , kBreak = return
-                     }
-
 -- Execute a statement
 exec :: KBlock -> Statement -> Interpreter ()
 exec _ (Expression e) = eval e >> return ()
 exec k (Block es)     = mapM_ (exec k) es
+exec k (IF c t me)    = execIF k c t me
+exec k w@(WHILE c s)  = execWHILE k w c s 
+exec k (FOR i c st s) = execFOR k i c st s
+exec k d@(DO s c)     = execDO k d s c 
+exec k f@(FOREACH v@(VariableRef vname) arr st) = execFOREACH k f v vname arr st
+exec _ (PRINT es)     = execPRINT es
+exec k (BREAK)        = (kBreak k) ()
+exec k (CONT)         = (kCont  k) ()
+exec k (NEXT)         = (kNext  k) ()
+exec k (EXIT _)       = (kExit  k) () -- TODO argument
+exec k (RETURN me)    = execRET k me
+exec _ (NOP)          = return ()
+exec _ (DELETE e)     = execDEL e
 
-exec k (IF c t me)    = do
-     b <- liftM coerceToBool $! eval c
+
+evalArith op le re = do
+     l <- liftM toDouble $! eval le
+     r <- liftM toDouble $! eval re
+     case op of
+          "*" -> return $! VDouble (l * r)
+          "/" -> return $! VDouble (l / r)
+          "+" -> return $! VDouble (l + r)
+          "-" -> return $! VDouble (l - r)
+          "%" -> return $! VDouble (mod' l r)
+          "^" -> return $! VDouble (l ** r)
+          otherwise -> fail $ "Unsupported arith operator " ++ op
+
+evalFieldRef e = do
+     i <- liftM toInt $ eval e
+     if i == 0
+     then gets hcThisLine >>= (return . valstr)
+     else do fs <- gets hcFields
+             return $! fs IM.! i
+
+evalVariableRef s = do
+     -- Variable lookup is special, since we may have an hierarchy
+     -- of scopes with its personal variables (in function calls).
+     -- So it first we do lookup in stack top, and then in the global
+     -- dictionary.
+     st <- gets hcStack
+     vs <- gets hcVars
+     let globalVal = vs *! s
+     return $! case st of
+       (f:_)     -> M.findWithDefault globalVal s f
+       otherwise -> globalVal
+
+evalBVariableRef s = do
+     bvs <- gets hcBVars
+     return $! bvs *! s
+
+evalArrRef s e = do
+     idx <- liftM toString $! eval e
+     ars <- gets hcArrays
+     return $! ars *! (s, B.unpack idx)
+
+evalCmp op le re = do
+     l <- eval le
+     r <- eval re
+     return $! VDouble $ test $ case (l, r) of
+        (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
+           -- If the both strings represent numbers completely
+          if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
+        (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
+        (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
+        (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
+  where
+    cmp op l r = case op of
+       "==" -> l == r
+       "!=" -> l /= r
+       ">"  -> l >  r
+       ">=" -> l >= r
+       "<"  -> l <  r
+       "<=" -> l <= r
+       otherwise -> error $ "Unsupported cmp operator " ++ op
+    test b = if b then 1 else 0
+
+evalNot e = do
+     b <- liftM toBool $! eval e
+     return $! VDouble (if b then 0.0 else 1.0)
+
+evalNeg e = do
+     d <- liftM toDouble $! eval e
+     return $! VDouble (- d)
+
+
+-- In a membership test, array name is parsed as an ordinary variable reference.
+-- TODO: Check in grammar
+evalArrTest s arr = do
+     arrs   <- gets hcArrays
+     subscr <- liftM toString $ eval s
+     return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
+  where test b = if b then 1 else 0
+
+evalLogic op le re = do
+     l <- liftM toBool $! eval le
+     r <- liftM toBool $! eval re
+     case op of
+          "&&" -> return $! VDouble $ test (l && r)
+          "||" -> return $! VDouble $ test (l || r)
+          otherwise -> fail $ "Unsupported logical operator " ++ op
+   where test b = if b then 1 else 0
+
+evalMatch s re = do
+     l <- liftM toString $! eval s
+     r <- liftM toString $! eval re
+     let rv = if r /= "" && l =~ r then 1.0 else 0.0
+     return $! VDouble rv
+
+evalNoMatch s re = do
+     l <- liftM toString $! eval s
+     r <- liftM toString $! eval re
+     let rv = if r /= "" && l =~ r then 0.0 else 1.0
+     return $! VDouble rv
+     
+evalAtan2 vx vy = do
+     y <- liftM toDouble $! eval vy
+     x <- liftM toDouble $! eval vx
+     return $! VDouble $ atan2 y x
+
+evalSRand vss = do
+     g <- case vss of
+       [vs] -> liftM (mkStdGen . toInt) $! eval vs
+       []   -> liftIO getStdGen
+     modify $ (\s -> s { hcStdGen = g })
+     return $! VDouble 0 -- TODO: srand return value?
+
+evalRand = do
+     g <- gets hcStdGen
+     let (r, g') = randomR (0.0, 1.0) g
+     modify $ (\s -> s { hcStdGen = g' })
+     return $! VDouble r
+
+evalIndex vs vt = do
+     s <- liftM toString $! eval vs
+     t <- liftM toString $! eval vt
+     let (x, y) = B.breakSubstring t s
+     return $! if B.null y
+               then VDouble 0
+               else VDouble $ fromIntegral $ 1 + B.length x
+
+evalLength vs = do
+     s <- liftM toString $! eval vs
+     return $! VDouble $ fromIntegral $ B.length s
+
+evalSplitFS vs a = do
+     fs <- liftM toString $ eval (BuiltInVar "FS")
+     evalSplit vs fs a
+
+evalSplitVar vs a vfs = do
+     fs <- liftM toString $ eval vfs
+     evalSplit vs fs a
+
+evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
+evalSplit vs fs arr = do
+   s <- liftM toString $ eval vs
+   let ss = s `splitWithSep` fs
+       is = [1, 2..]
+   ars <- gets hcArrays
+   let -- at first, clear the array from its previous contents
+       -- TODO: very slow, when we have all arrays in a single Data.Map
+       ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
+       -- Form a new array containing extracted values
+       keys  = map (arr,)  $ (map show is)
+       strs  = map valstr  $ ss
+       res   = M.fromList $ zip keys strs
+       -- Put our new values then
+       ars'' = M.union ars' res
+   modify $ (\s -> s { hcArrays = ars'' })
+   return $! VDouble $ fromIntegral $ length ss
+
+evalSubstr vs vp = do
+     s <- liftM toString    $ eval vs
+     p <- liftM toInt $ eval vp
+     return $! valstr $ B.drop (p-1) s
+
+evalSubstr2 vs vp vn = do
+     s <- liftM toString    $ eval vs
+     p <- liftM toInt $ eval vp
+     n <- liftM toInt $ eval vn
+     return $! valstr $ B.take n $ B.drop (p-1) s
+
+evalGSub vr vs = do
+     thisLine <- gets hcThisLine
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     let matches = getAllMatches (thisLine =~ r) :: [(MatchOffset, MatchLength)]
+         regions = invRegions matches (B.length thisLine)
+         strings = map (\(s,l) -> B.take l (B.drop s thisLine)) regions
+         result  = B.intercalate s strings
+     modify (\s -> s { hcThisLine = result })
+     reconstructThisFields result
+     return $! VDouble $ fromIntegral $ length matches
+
+evalGSubVar vr vs vt = do
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     t <- liftM toString $ eval vt
+     let matches = getAllMatches (t =~ r) :: [(MatchOffset, MatchLength)]
+         regions = invRegions matches (B.length t)
+         strings = map (\(s,l) -> B.take l (B.drop s t)) regions
+         result  = valstr $ B.intercalate s strings
+     case vt of
+        (VariableRef s)    -> assignToVar   "=" s   result
+        (FieldRef ref)     -> assignToField "=" ref result
+        (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+     return $! VDouble $ fromIntegral $ length matches
+
+evalSub vr vs = do
+     thisLine <- gets hcThisLine
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     case (thisLine =~ r) of
+          (-1, _)       -> return $! VDouble 0
+          (offset, len) -> do
+             let result = B.concat [B.take offset thisLine, s, B.drop (offset+len) thisLine]
+             modify (\s -> s { hcThisLine = result })
+             reconstructThisFields result
+             return $! VDouble 1
+
+evalSubVar vr vs vt = do
+     r <- liftM toString $ eval vr
+     s <- liftM toString $ eval vs
+     t <- liftM toString $ eval vt
+     case (t =~ r) of
+          (-1, _)       -> return $! VDouble 0
+          (offset, len) -> do
+             let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
+             case vt of
+                (VariableRef s)    -> assignToVar   "=" s   result
+                (FieldRef ref)     -> assignToField "=" ref result
+                (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+             return $! VDouble 1
+
+evalFMatch vs vr = do
+     s <- liftM toString $ eval vs
+     r <- liftM toString $ eval vr
+     let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
+         retS = VDouble $ fromIntegral $ rStart+1
+         retL = VDouble $ fromIntegral $ rLength
+     assignToBVar "=" "RSTART"  $ retS
+     assignToBVar "=" "RLENGTH" $ retL
+     return $! retS
+
+evalFunCall f args = do
+     mfcn <- liftM (find (func f)) $ gets hcCode
+     case mfcn of
+       (Just (Function _ argNames stmt)) -> do
+           -- Build a stack frame for function call first
+           argVals <- mapM eval args
+           let numArgs = length argNames
+               numVals = length argVals
+               numLocs = numArgs - numVals
+
+               boundArgs = zip argNames argVals
+               localVars = if numLocs > 0
+                           then zip (drop numVals argNames) $ repeat (VDouble 0)
+                           else []
+               newStackFrame = M.fromList $! boundArgs ++ localVars
+
+           oldStack <- gets hcStack
+           modify $ (\s -> s { hcStack = newStackFrame:oldStack, hcRetVal = VDouble 0 })
+           callCC $ \ret -> do
+              let retHook (Just v) = modify (\s -> s { hcRetVal = v }) >> ret ()
+                  retHook Nothing  = ret ()
+                  k = seq retHook $ emptyKBlock {kRet = retHook}
+              exec k stmt
+           modify $ (\s -> s { hcStack = oldStack })
+           gets hcRetVal
+       Nothing    -> fail $ f ++ " - unknown function"
+       otherwise  -> fail $ "Fatal error when invoking function " ++ f
+  where
+     func s (Function ss _ _) = s == ss
+     func s _                 = False
+
+evalAssign op p v = do
+     val <- eval v
+     case p of
+       (FieldRef ref)     -> assignToField op ref  val
+       (VariableRef name) -> assignToVar   op name val
+       (ArrayRef arr ref) -> assignToArr   op arr ref val
+       (BuiltInVar name)  -> assignToBVar  op name val
+       otherwise -> fail "Only to-field and to-variable assignments are supported"
+
+
+execIF k c t me = do
+     b <- liftM toBool $! eval c
      if b
      then exec k t
      else case me of
           Nothing -> return ()
           Just es -> exec k es
 
-exec k w@(WHILE c s) = callCC $ \br -> do
+execWHILE k w c s = callCC $ \br -> do
      let k' = k {kBreak = br, kCont = \_ -> nextWhile k'}
          nextWhile kk = do
-            b <- liftM coerceToBool $! eval c
+            b <- liftM toBool $! eval c
             when b $ (exec kk s >> nextWhile kk)
             br ()
      nextWhile k'
 
-exec k (FOR i c st s) = callCC $ \br -> do
+execFOR k i c st s = callCC $ \br -> do
     let k' = k {kBreak = br, kCont = \_ -> nextFor k'}
         -- TODO: optional expressoins
         initFor    = eval (fromJust i)
         nextFor kk = eval (fromJust st) >> execFor kk
         execFor kk = do
-           b <- liftM coerceToBool $! eval (fromJust c)
+           b <- liftM toBool $! eval (fromJust c)
            when b $ exec kk s >> nextFor kk
            br ()
     initFor
     execFor k'
 
-exec k d@(DO s c) = callCC $ \br -> do
+execDO k d s c = callCC $ \br -> do
      let k' = k {kBreak = br, kCont = \_ -> nextDo k'}
          nextDo kk = do
             exec kk s
-            b <- liftM coerceToBool $! eval c
+            b <- liftM toBool $! eval c
             when b $ nextDo kk
             br ()
      nextDo k'
 
 -- TODO: The order in which the keys will be traversed may be suprising
-exec k f@(FOREACH v@(VariableRef vname) arr st) = do
+execFOREACH k f v vname arr st = do
      arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
      callCC $ \br -> do
        let k' = k {kBreak = br}
@@ -723,7 +689,7 @@ exec k f@(FOREACH v@(VariableRef vname) arr st) = do
        br ()
    where inArray (a, _) = a == arr
 
-exec _ (PRINT es) = do
+execPRINT es = do
    ofs <- liftM toString $! eval (BuiltInVar "OFS")
    ors <- liftM toString $! eval (BuiltInVar "ORS")
    str <- case es of
@@ -731,16 +697,11 @@ exec _ (PRINT es) = do
       otherwise -> liftM (B.intercalate ofs . map toString) $ mapM eval es
    liftIO $ B.putStr $ B.append str ors
 
-exec k (BREAK)     = (kBreak k) ()
-exec k (CONT)      = (kCont  k) ()
-exec k (NEXT)      = (kNext  k) ()
-exec k (EXIT _)    = (kExit  k) () -- TODO argument
-exec k (RETURN me) = case me of
+execRET k me = case me of
       Nothing   -> (kRet k) Nothing
       Just expr -> eval expr >>= (kRet k . Just)
-exec _ (NOP)       = return ()
 
-exec _ (DELETE e) = case e of
+execDEL e = case e of
     (ArrayRef arr idx) -> do
        oldArrs <- gets hcArrays
        subscr  <- liftM toString $ eval idx
