@@ -28,15 +28,15 @@ Currently use ~Regex-TDFA~ as-is.
 
 ** Expressions
 
-| Expressoin         | Parser | Interpreter | Comments                                |
-|--------------------+--------+-------------+-----------------------------------------|
-| Constants          | WIP    |             | Only single numeric format is supported |
-| Variables          | YES    | YES         |                                         |
-| Arrays             | WIP    | WIP         | Compound subscripts are not supported   |
-| Built-in variables | YES    | WIP         | See "Built-in variables"                |
-| Field variables    | YES    | YES         |                                         |
-| Operators          | YES    | WIP         | See "Operators"                         |
-| Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~            |
+| Expressoin         | Parser | Interpreter | Comments                                                         |
+|--------------------+--------+-------------+------------------------------------------------------------------|
+| Constants          | YES    |             | Attoparsec (and old ~read`, actually) handles all common formats |
+| Variables          | YES    | YES         |                                                                  |
+| Arrays             | WIP    | WIP         | Compound subscripts are not supported                            |
+| Built-in variables | YES    | WIP         | See "Built-in variables"                                         |
+| Field variables    | YES    | YES         |                                                                  |
+| Operators          | YES    | WIP         | See "Operators"                                                  |
+| Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~                                     |
 
 ** Built-in variables
 
@@ -70,7 +70,7 @@ Currently use ~Regex-TDFA~ as-is.
 | ~in~              | YES    | YES         |                                                |
 | =~=, =!~=         | YES    | YES         |                                                |
 | ~<~, ~<=~, ~==~,  |        |             |                                                |
-| ~!=~, ~>=~, ~>~   | YES    | WIP         | Only for numeric values                        |
+| ~!=~, ~>=~, ~>~   | YES    | YES         |                                                |
 | Concatenation     | NO     | NO          | Explicit ~:~ operator is supported by grammar, |
 |                   |        |             | though not yet supported by the runtime.       |
 | ~+~, ~-~          | YES    | YES         |                                                |
@@ -104,11 +104,11 @@ Currently use ~Regex-TDFA~ as-is.
 
 ** Run-time value coercion
 
-| Context       | Interpreter | Comments                |
-|---------------+-------------+-------------------------|
-| Arithmetic    | YES         |                         |
-| Concatenation | NO          |                         |
-| Comparision   | WIP         | Only for numeric values |
+| Context       | Interpreter | Comments                                      |
+|---------------+-------------+-----------------------------------------------|
+| Arithmetic    | YES         |                                               |
+| Concatenation | NO          |                                               |
+| Comparision   | YES         | Conforms to the one described in The AWK Book |
 
 
 ** Actions

@@ -2,6 +2,9 @@
 
 module Lang.Hawk.Interpreter where
 
+import Control.Applicative ((<*))
+
+import qualified Data.Attoparsec.ByteString.Char8 as AP
 import qualified Data.ByteString.Char8 as B
 
 import Text.Regex.TDFA
@@ -23,9 +26,21 @@ import System.IO
 
 import Lang.Hawk.AST
 
-data Value = VString !B.ByteString
+data Value = VString !B.ByteString !Double !Bool
            | VDouble !Double
              deriving (Eq, Show)
+
+valstr :: B.ByteString -> Value
+valstr s = VString s n b
+  where (n,b) = case AP.parse (AP.skipSpace >> AP.double <* AP.skipSpace) s of
+                (AP.Partial f) -> case (f "") of
+                  (AP.Done _ r) -> (  r,  True) -- The entire string is parsed as number
+                  otherwise     -> (0.0, False) -- The impossible case?
+                (AP.Done _ r)   -> (  r, False) -- Only a part of string is parsed as number
+                (AP.Fail _ _ _) -> (0.0, False) -- Not a number at all
+
+defstr :: B.ByteString -> Value
+defstr s = VString s 0.0 False
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
@@ -61,10 +76,10 @@ emptyContext s = HawkContext
   where initialBuiltInVars = [ ("FNR", VDouble 0)
                              , ("NR",  VDouble 0)
                              , ("NF",  VDouble 0)
-                             , ("OFS", VString " ")
-                             , ("FS",  VString " ")
-                             , ("ORS", VString "\n")
-                             , ("RS",  VString "\n")
+                             , ("OFS", defstr " ")
+                             , ("FS",  defstr " ")
+                             , ("ORS", defstr "\n")
+                             , ("RS",  defstr "\n")
                              ]
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
@@ -101,7 +116,7 @@ finalize = do
 -- This is actually an entry point to the Interpreter.
 intMain :: Handle -> String -> Interpreter ()
 intMain h inputFile = do
-    assignToBVar "=" "FILENAME" (VString $ B.pack inputFile)
+    assignToBVar "=" "FILENAME" (valstr $ B.pack inputFile)
     assignToBVar "=" "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
@@ -134,11 +149,9 @@ intMain h inputFile = do
 processLine :: KBlock -> B.ByteString -> Interpreter ()
 processLine k s = do
     oldContext <- get
-    thisFields <- liftM (map VString) $ splitIntoFields s
+    thisFields <- liftM (map valstr) $ splitIntoFields s
     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
-        thisContext = oldContext { hcThisLine = s
-                                 , hcFields   = thisFldMap
-                                 }
+        thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
     put $! thisContext
     assignToBVar "="  "NF"  (VDouble $ fromIntegral $ length thisFields)
     assignToBVar "+=" "NR"  (VDouble 1)
@@ -194,15 +207,15 @@ eval (Arith op le re) = do
           otherwise -> fail $ "Unsupported arith operator " ++ op
 
 eval (Const (LitNumeric i)) = return $! VDouble i
-eval (Const (LitStr s))     = return $! VString $ B.pack s
-eval (Const (LitRE s))      = return $! VString $ B.pack s
+eval (Const (LitStr s))     = return $! valstr $ B.pack s
+eval (Const (LitRE s))      = return $! valstr $ B.pack s
 
 eval (Id e) = eval e
 
 eval (FieldRef e) = do
      i <- liftM coerceToInt $ eval e
      if i == 0
-     then gets hcThisLine >>= (return . VString)
+     then gets hcThisLine >>= (return . valstr)
      else do fs <- gets hcFields
              return $! fs IM.! i
 
@@ -235,17 +248,25 @@ eval (Decr n v@(VariableRef s)) = decrVar   n v
 eval (Decr n a@(ArrayRef s e))  = decrArr   n a
 
 eval (Relation op le re) = do
-     l <- liftM coerceToDouble $! eval le
-     r <- liftM coerceToDouble $! eval re
-     case op of -- for now, only numeric values
-          "==" -> return $! VDouble $ test (l == r)
-          "!=" -> return $! VDouble $ test (l /= r)
-          ">"  -> return $! VDouble $ test (l >  r)
-          ">=" -> return $! VDouble $ test (l >= r)
-          "<"  -> return $! VDouble $ test (l <  r)
-          "<=" -> return $! VDouble $ test (l <= r)
-          otherwise -> fail $ "Unsupported cmp operator " ++ op
-  where test b = if b then 1 else 0
+     l <- eval le
+     r <- eval re
+     return $! VDouble $ test $ case (l, r) of
+        (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
+           -- If the both strings represent numbers completely
+          if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
+        (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
+        (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
+        (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
+  where
+    cmp op l r = case op of
+       "==" -> l == r
+       "!=" -> l /= r
+       ">"  -> l >  r
+       ">=" -> l >= r
+       "<"  -> l <  r
+       "<=" -> l <= r
+       otherwise -> error $ "Unsupported cmp operator " ++ op
+    test b = if b then 1 else 0
 
 eval (Not e) = do
      b <- liftM coerceToBool $! eval e
@@ -336,13 +357,13 @@ eval (FunCall "split" [vs, (VariableRef a), vfs]) = do
 eval (FunCall "substr" [vs, vp]) = do
      s <- liftM toString    $ eval vs
      p <- liftM coerceToInt $ eval vp
-     return $! VString $ B.drop (p-1) s
+     return $! valstr $ B.drop (p-1) s
 
 eval (FunCall "substr" [vs, vp, vn]) = do
      s <- liftM toString    $ eval vs
      p <- liftM coerceToInt $ eval vp
      n <- liftM coerceToInt $ eval vn
-     return $! VString $ B.take n $ B.drop (p-1) s
+     return $! valstr $ B.take n $ B.drop (p-1) s
 
 eval (FunCall "gsub" [vr, vs]) = do
      thisLine <- gets hcThisLine
@@ -363,7 +384,7 @@ eval (FunCall "gsub" [vr, vs, vt]) = do
      let matches = getAllMatches (t =~ r) :: [(MatchOffset, MatchLength)]
          regions = invRegions matches (B.length t)
          strings = map (\(s,l) -> B.take l (B.drop s t)) regions
-         result  = VString $ B.intercalate s strings
+         result  = valstr $ B.intercalate s strings
      case vt of
         (VariableRef s)    -> assignToVar   "=" s   result
         (FieldRef ref)     -> assignToField "=" ref result
@@ -389,7 +410,7 @@ eval (FunCall "sub" [vr, vs, vt]) = do
      case (t =~ r) of
           (-1, _)       -> return $! VDouble 0
           (offset, len) -> do
-             let result = VString $ B.concat [B.take offset t, s, B.drop (offset+len) t]
+             let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
              case vt of
                 (VariableRef s)    -> assignToVar   "=" s   result
                 (FieldRef ref)     -> assignToField "=" ref result
@@ -474,7 +495,7 @@ evalSplit vs fs arr = do
        ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
        -- Form a new array containing extracted values
        keys  = map (arr,)  $ (map show is)
-       strs  = map VString $ ss
+       strs  = map valstr  $ ss
        res   = M.fromList $ zip keys strs
        -- Put our new values then
        ars'' = M.union ars' res
@@ -502,12 +523,21 @@ calcNewValue oldVal op arg =
 
 assignToField op ref val = do
      i <- liftM coerceToInt $! eval ref
-     oldFields <- gets hcFields
-     let newValue  = calcNewValue (oldFields *!! i) op val
-         newFields = IM.insert i newValue oldFields
-     modify (\s -> s { hcFields = newFields })
-     reconstructThisLine
-     return $! newValue
+     if i == 0
+     then do
+          thisLine <- gets hcThisLine
+          let newLine    = calcNewValue (valstr thisLine) op val
+              newLineStr = toString newLine
+          modify (\s -> s {hcThisLine = newLineStr})
+          reconstructThisFields newLineStr
+          return $! newLine
+     else do
+          oldFields <- gets hcFields
+          let newValue  = calcNewValue (oldFields *!! i) op val
+              newFields = IM.insert i newValue oldFields
+          modify (\s -> s { hcFields = newFields })
+          reconstructThisLine
+          return $! newValue
 
 reconstructThisLine = do
      thisFields <- gets (IM.toList . hcFields)
@@ -518,8 +548,8 @@ reconstructThisLine = do
 
 reconstructThisFields l = do
     oldContext <- get
-    let thisFields = map VString $ B.words l
-        thisFldMap = IM.fromList (zip [1,2..] thisFields)
+    thisFields <- liftM (map valstr) $ splitIntoFields l
+    let thisFldMap = IM.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
@@ -596,22 +626,22 @@ decrArr n arr@(ArrayRef name ref) = do
 
 -- Coercions and conversions
 coerceToBool :: Value -> Bool
-coerceToBool (VString "") = False
-coerceToBool (VDouble 0)  = False
-coerceToBool _            = True
+coerceToBool (VString "" _ _) = False
+coerceToBool (VDouble 0)      = False
+coerceToBool _                = True
 
 coerceToDouble :: Value -> Double
-coerceToDouble (VDouble d)  = d
-coerceToDouble (VString "") = 0.0
-coerceToDouble (VString s)  = read $ B.unpack s
+coerceToDouble (VDouble d)      = d
+coerceToDouble (VString "" _ _) = 0.0
+coerceToDouble (VString _  d _) = d
 
 coerceToInt :: Value -> Int
-coerceToInt (VDouble d)  = truncate d
-coerceToInt (VString "") = 0
-coerceToInt (VString s)  = read $ B.unpack s
+coerceToInt (VDouble d)      = truncate d
+coerceToInt (VString "" _ _) = 0
+coerceToInt (VString _  d _) = truncate d
 
 toString :: Value -> B.ByteString
-toString (VString s) = s
+toString (VString s _ _) = s
 toString (VDouble d) =
     let s | rs == [0] && p == 0 = "0"
           | p >= 0 && nrs <= p  = sgn ++ (concat $ map show rs) ++ take (p-nrs) (repeat '0')
@@ -685,7 +715,7 @@ exec k f@(FOREACH v@(VariableRef vname) arr st) = do
        let k' = k {kBreak = br}
            nextFor kk []         = br ()
            nextFor kk ((_,s):ss) = do
-             assignToVar "=" vname (VString $ B.pack s)
+             assignToVar "=" vname (valstr $ B.pack s)
              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
              seq kk' $ exec kk' st
              nextFor kk' ss
