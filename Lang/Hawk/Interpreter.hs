@@ -8,8 +8,7 @@ module Lang.Hawk.Interpreter
 
 import qualified Data.ByteString.Char8 as B
 
--- import Text.Regex.TDFA
-import Text.Regex.PCRE
+import Text.Regex.TDFA
 
 import Data.Fixed (mod')
 
