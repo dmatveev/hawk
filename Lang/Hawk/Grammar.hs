@@ -1,4 +1,4 @@
-module Lang.Hawk.Grammar where
+ module Lang.Hawk.Grammar where
 
 import Data.Maybe
 import Control.Monad (when, liftM)
@@ -12,20 +12,20 @@ import Text.Parsec.Expr
 import Lang.Hawk.AST
 
 hawkBuiltinVars =
-    [ "ARGC"     -- number of command-line arguments
-    , "ARGV"     -- array of command-line arguments
-    , "FILENAME" -- name of current input file
-    , "FNR"      -- record number in current file
-    , "FS"       -- controls the input field separator (default " ")
-    , "NF"       -- number of fields in the current record
-    , "NR"       -- number of records read so far
-    , "OFMT"     -- output format for numbers (default "%.6g")
-    , "OFS"      -- output field separator ("default " ")
-    , "ORS"      -- output record separator (default "\n")
-    , "RLENGTH"  -- length of string matched by `match` function
-    , "RS"       -- controls the input record separator (default "\n")
-    , "RSTART"   -- start of string matched by `match` function
-    , "SUBSEP"   -- subscript separator (default "\034")
+    [ ("ARGC"    ,ARGC    ) -- number of command-line arguments
+    , ("ARGV"    ,ARGV    ) -- array of command-line arguments
+    , ("FILENAME",FILENAME) -- name of current input file
+    , ("FNR"     ,FNR     ) -- record number in current file
+    , ("FS"      ,FS      ) -- controls the input field separator (default " ")
+    , ("NF"      ,NF      ) -- number of fields in the current record
+    , ("NR"      ,NR      ) -- number of records read so far
+    , ("OFMT"    ,OFMT    ) -- output format for numbers (default "%.6g")
+    , ("OFS"     ,OFS     ) -- output field separator ("default " ")
+    , ("ORS"     ,ORS     ) -- output record separator (default "\n")
+    , ("RLENGTH" ,RLENGTH ) -- length of string matched by `match` function
+    , ("RS"      ,RS      ) -- controls the input record separator (default "\n")
+    , ("RSTART"  ,RSTART  ) -- start of string matched by `match` function
+    , ("SUBSEP"  ,SUBSEP  ) -- subscript separator (default "\034")
     ]
 
 hawkConstructs =
@@ -48,7 +48,7 @@ hawkConstructs =
 lexer = P.makeTokenParser
         ( emptyDef
         { P.commentLine     = "#" 
-        , P.reservedNames   = ["BEGIN","END"] ++ hawkBuiltinVars ++ hawkConstructs
+        , P.reservedNames   = ["BEGIN","END"] ++ (map fst hawkBuiltinVars) ++ hawkConstructs
         , P.reservedOpNames = ["*","/","+","-","%","^"
                               ,"=","*=","/=","+=","-=","%=","^="
                               ,"++","--"
@@ -153,9 +153,9 @@ funcall = do
    return $ FunCall f s
    <?> "function call"
 
-builtInVar s = do
+builtInVar (s,b) = do
    reserved s
-   return $ BuiltInVar s        
+   return $ BuiltInVar b
 
 builtInVars = choice $ map builtInVar hawkBuiltinVars
 

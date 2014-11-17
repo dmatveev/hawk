@@ -12,6 +12,14 @@ data CmpOp = CmpEQ | CmpNE | CmpGT | CmpGE | CmpLT | CmpLE
 data LogOp = AND | OR
              deriving (Eq, Show)
 
+data BVar = ARGC | ARGV
+          | FILENAME | FNR | FS
+          | NF | NR
+          | OFMT | OFS | ORS
+          | RLENGTH | RS | RSTART
+          | SUBSEP
+            deriving (Eq, Ord, Show)
+
 data Literal = LitNumeric Double
              | LitStr String
              | LitRE String
@@ -25,7 +33,7 @@ data Expression = Arith ArithOp Expression Expression
                 | FieldRef Expression
                 | VariableRef String
                 | ArrayRef String Expression
-                | BuiltInVar String
+                | BuiltInVar BVar
                 | Assignment ModOp Expression Expression
                 | Incr Notation Expression
                 | Decr Notation Expression

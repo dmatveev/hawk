@@ -33,7 +33,7 @@ data HawkContext = HawkContext
                  , hcFields   :: (IM.IntMap Value)
                  , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
-                 , hcBVars    :: !(M.Map String Value)
+                 , hcBVars    :: !(M.Map BVar Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
                  , hcThisLine :: B.ByteString
@@ -74,13 +74,13 @@ emptyContext s = HawkContext
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
                  }
-  where initialBuiltInVars = [ ("FNR", VDouble 0)
-                             , ("NR",  VDouble 0)
-                             , ("NF",  VDouble 0)
-                             , ("OFS", defstr " ")
-                             , ("FS",  defstr " ")
-                             , ("ORS", defstr "\n")
-                             , ("RS",  defstr "\n")
+  where initialBuiltInVars = [ (FNR, VDouble 0)
+                             , (NR,  VDouble 0)
+                             , (NF,  VDouble 0)
+                             , (OFS, defstr " ")
+                             , (FS,  defstr " ")
+                             , (ORS, defstr "\n")
+                             , (RS,  defstr "\n")
                              ]
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
@@ -116,8 +116,8 @@ finalize = do
 -- This is actually an entry point to the Interpreter.
 intMain :: Handle -> String -> Interpreter ()
 intMain h inputFile = do
-    assignToBVar ModSet "FILENAME" (valstr $ B.pack inputFile)
-    assignToBVar ModSet "FNR"      (VDouble 0)
+    assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
+    assignToBVar ModSet FNR      (VDouble 0)
     initialize
     callCC $ \ex -> do
        let k = emptyKBlock {kExit = ex}
@@ -126,7 +126,7 @@ intMain h inputFile = do
     finalize
   where
     readLoop k thisBuf eof = do
-      rs <- liftM toString $ eval (BuiltInVar "RS")
+      rs <- liftM toString $ eval (BuiltInVar RS)
       let nrs = B.length rs
       case B.breakSubstring rs thisBuf of
          (l, rest) | B.null l && B.null rest && eof ->
@@ -153,9 +153,9 @@ processLine k s = do
     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
     put $! thisContext
-    assignToBVar ModSet "NF"  (VDouble $ fromIntegral $ length thisFields)
-    assignToBVar ModAdd "NR"  (VDouble 1)
-    assignToBVar ModAdd "FNR" (VDouble 1)
+    assignToBVar ModSet NF  (VDouble $ fromIntegral $ length thisFields)
+    assignToBVar ModAdd NR  (VDouble 1)
+    assignToBVar ModAdd FNR (VDouble 1)
     -- find matching actions for this line and execute them
     actions <- (gets hcCode >>= filterM matches)
     forM_ actions $ \(Section _ ms) -> exec k $
@@ -165,7 +165,7 @@ processLine k s = do
 
 splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
 splitIntoFields str = do
-   fs <- liftM toString $ eval (BuiltInVar "FS")
+   fs <- liftM toString $ eval (BuiltInVar FS)
    let fields | fs == " " = B.words str                        -- Handles ' ' and '\t'
               | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
               | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
@@ -266,7 +266,7 @@ assignToField op ref val = do
 
 reconstructThisLine = do
      thisFields <- gets (IM.toList . hcFields)
-     ofs        <- liftM toString $ eval (BuiltInVar "OFS")
+     ofs        <- liftM toString $ eval (BuiltInVar OFS)
      let line = B.intercalate ofs $ map (toString . snd) thisFields
      modify (\s -> s { hcThisLine = line })
      return ()
@@ -495,7 +495,7 @@ evalLength vs = do
      return $! VDouble $ fromIntegral $ B.length s
 
 evalSplitFS vs a = do
-     fs <- liftM toString $ eval (BuiltInVar "FS")
+     fs <- liftM toString $ eval (BuiltInVar FS)
      evalSplit vs fs a
 
 evalSplitVar vs a vfs = do
@@ -589,8 +589,8 @@ evalFMatch vs vr = do
      let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
          retS = VDouble $ fromIntegral $ rStart+1
          retL = VDouble $ fromIntegral $ rLength
-     assignToBVar ModSet "RSTART"  $ retS
-     assignToBVar ModSet "RLENGTH" $ retL
+     assignToBVar ModSet RSTART  $ retS
+     assignToBVar ModSet RLENGTH $ retL
      return $! retS
 
 evalFunCall f args = do
@@ -687,8 +687,8 @@ execFOREACH k f v vname arr st = do
    where inArray (a, _) = a == arr
 
 execPRINT es = do
-   ofs <- liftM toString $! eval (BuiltInVar "OFS")
-   ors <- liftM toString $! eval (BuiltInVar "ORS")
+   ofs <- liftM toString $! eval (BuiltInVar OFS)
+   ors <- liftM toString $! eval (BuiltInVar ORS)
    str <- case es of
       []        -> gets hcThisLine
       otherwise -> liftM (B.intercalate ofs . map toString) $ mapM eval es

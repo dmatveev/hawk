@@ -2,3 +2,6 @@
 *.hi
 *.o
 *.awk
+*.log
+*.prof
+*.txt
