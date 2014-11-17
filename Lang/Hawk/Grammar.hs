@@ -163,24 +163,25 @@ builtInVars = choice $ map builtInVar hawkBuiltinVars
 -- The reversed version of The AWK Book's table 2-8.
 table = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
           , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
-        , [arith "^"]
+        , [arith "^" Pow]
         , [prefix "!" Not]
         , [prefix "-" Neg, prefix "+" Id]
-        , [arith "*", arith "/", arith "%" ]
-        , [arith "+", arith "-" ]
+        , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
+        , [arith "+" Add, arith "-" Sub ]
         , [binary ":" Concat AssocRight] -- explicit concatenation operator
-        , [rel "<", rel "<=", rel "==", rel "!=", rel ">=", rel ">"]
+        , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE, rel ">" CmpGT]
         , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
         , [binary "in" In AssocRight]
-        , [logic "&&"]
-        , [logic "||"]
-        , [asgn "=", asgn "+=", asgn "-=", asgn "*=", asgn  "/=", asgn "%=", asgn "^="]
+        , [logic "&&" AND]
+        , [logic "||" OR]
+        , [ asgn "=" ModSet, asgn "+=" ModAdd, asgn "-=" ModSub
+          , asgn "*=" ModMul, asgn  "/=" ModDiv, asgn "%=" ModMod, asgn "^=" ModPow]
         ]
 
-rel   s = binary s (Relation s) AssocLeft
-arith s = binary s (Arith s) AssocLeft
-asgn  s = binary s (Assignment s) AssocRight
-logic s = binary s (Logic s) AssocRight
+rel   s o = binary s (Relation   o) AssocLeft
+arith s o = binary s (Arith      o) AssocLeft
+asgn  s o = binary s (Assignment o) AssocRight
+logic s o = binary s (Logic      o) AssocRight
 
 binary  name fun assoc = Infix   (do {reservedOp name; return fun}) assoc
 prefix  name fun       = Prefix  (do {reservedOp name; return fun})

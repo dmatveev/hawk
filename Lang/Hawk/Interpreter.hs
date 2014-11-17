@@ -8,7 +8,8 @@ module Lang.Hawk.Interpreter
 
 import qualified Data.ByteString.Char8 as B
 
-import Text.Regex.TDFA
+-- import Text.Regex.TDFA
+import Text.Regex.PCRE
 
 import Data.Fixed (mod')
 
@@ -116,8 +117,8 @@ finalize = do
 -- This is actually an entry point to the Interpreter.
 intMain :: Handle -> String -> Interpreter ()
 intMain h inputFile = do
-    assignToBVar "=" "FILENAME" (valstr $ B.pack inputFile)
-    assignToBVar "=" "FNR"      (VDouble 0)
+    assignToBVar ModSet "FILENAME" (valstr $ B.pack inputFile)
+    assignToBVar ModSet "FNR"      (VDouble 0)
     initialize
     callCC $ \ex -> do
        let k = emptyKBlock {kExit = ex}
@@ -153,9 +154,9 @@ processLine k s = do
     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
     put $! thisContext
-    assignToBVar "="  "NF"  (VDouble $ fromIntegral $ length thisFields)
-    assignToBVar "+=" "NR"  (VDouble 1)
-    assignToBVar "+=" "FNR" (VDouble 1)
+    assignToBVar ModSet "NF"  (VDouble $ fromIntegral $ length thisFields)
+    assignToBVar ModAdd "NR"  (VDouble 1)
+    assignToBVar ModAdd "FNR" (VDouble 1)
     -- find matching actions for this line and execute them
     actions <- (gets hcCode >>= filterM matches)
     forM_ actions $ \(Section _ ms) -> exec k $
@@ -208,7 +209,7 @@ eval (Incr n a@(ArrayRef    s e))    = incrArr n a
 eval (Decr n f@(FieldRef      e))    = decrField n f
 eval (Decr n v@(VariableRef s  ))    = decrVar n v
 eval (Decr n a@(ArrayRef    s e))    = decrArr n a
-eval (Relation op le re)             = evalCmp op re le
+eval (Relation op le re)             = evalCmp op le re
 eval (Not e)                         = evalNot e 
 eval (Neg e)                         = evalNeg e
 eval (Concat _ _ )                   = unsup "Concatenations"
@@ -321,32 +322,32 @@ assignToArr op arr ref val = do
 
 incrField n fld@(FieldRef e) = do
    oldVal <- eval fld
-   newVal <- assignToField "+=" e (VDouble 1.0)
+   newVal <- assignToField ModAdd e (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 decrField n fld@(FieldRef e) = do
    oldVal <- eval fld
-   newVal <- assignToField "-=" e (VDouble 1.0)
+   newVal <- assignToField ModSub e (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 incrVar n var@(VariableRef s) = do
    oldVal <- eval var
-   newVal <- assignToVar "+=" s (VDouble 1.0)
+   newVal <- assignToVar ModAdd s (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 decrVar n var@(VariableRef s) = do
    oldVal <- eval var
-   newVal <- assignToVar "-=" s (VDouble 1.0)
+   newVal <- assignToVar ModSub s (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 incrArr n arr@(ArrayRef name ref) = do
    oldVal <- eval arr
-   newVal <- assignToArr "+=" name ref (VDouble 1.0)
+   newVal <- assignToArr ModAdd name ref (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 decrArr n arr@(ArrayRef name ref) = do
    oldVal <- eval arr
-   newVal <- assignToArr "-=" name ref (VDouble 1.0)
+   newVal <- assignToArr ModSub name ref (VDouble 1.0)
    return (if n == Post then oldVal else newVal)
 
 -- Execute a statement
@@ -372,13 +373,12 @@ evalArith op le re = do
      l <- liftM toDouble $! eval le
      r <- liftM toDouble $! eval re
      case op of
-          "*" -> return $! VDouble (l * r)
-          "/" -> return $! VDouble (l / r)
-          "+" -> return $! VDouble (l + r)
-          "-" -> return $! VDouble (l - r)
-          "%" -> return $! VDouble (mod' l r)
-          "^" -> return $! VDouble (l ** r)
-          otherwise -> fail $ "Unsupported arith operator " ++ op
+          Mul -> return $! VDouble (l * r)
+          Div -> return $! VDouble (l / r)
+          Add -> return $! VDouble (l + r)
+          Sub -> return $! VDouble (l - r)
+          Mod -> return $! VDouble (mod' l r)
+          Pow -> return $! VDouble (l ** r)
 
 evalFieldRef e = do
      i <- liftM toInt $ eval e
@@ -420,13 +420,12 @@ evalCmp op le re = do
         (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
   where
     cmp op l r = case op of
-       "==" -> l == r
-       "!=" -> l /= r
-       ">"  -> l >  r
-       ">=" -> l >= r
-       "<"  -> l <  r
-       "<=" -> l <= r
-       otherwise -> error $ "Unsupported cmp operator " ++ op
+       CmpEQ -> l == r
+       CmpNE -> l /= r
+       CmpGT -> l >  r
+       CmpGE -> l >= r
+       CmpLT -> l <  r
+       CmpLE -> l <= r
     test b = if b then 1 else 0
 
 evalNot e = do
@@ -450,9 +449,8 @@ evalLogic op le re = do
      l <- liftM toBool $! eval le
      r <- liftM toBool $! eval re
      case op of
-          "&&" -> return $! VDouble $ test (l && r)
-          "||" -> return $! VDouble $ test (l || r)
-          otherwise -> fail $ "Unsupported logical operator " ++ op
+          AND -> return $! VDouble $ test (l && r)
+          OR  -> return $! VDouble $ test (l || r)
    where test b = if b then 1 else 0
 
 evalMatch s re = do
@@ -555,9 +553,9 @@ evalGSubVar vr vs vt = do
          strings = map (\(s,l) -> B.take l (B.drop s t)) regions
          result  = valstr $ B.intercalate s strings
      case vt of
-        (VariableRef s)    -> assignToVar   "=" s   result
-        (FieldRef ref)     -> assignToField "=" ref result
-        (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+        (VariableRef s)    -> assignToVar   ModSet s   result
+        (FieldRef ref)     -> assignToField ModSet ref result
+        (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
      return $! VDouble $ fromIntegral $ length matches
 
 evalSub vr vs = do
@@ -581,9 +579,9 @@ evalSubVar vr vs vt = do
           (offset, len) -> do
              let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
              case vt of
-                (VariableRef s)    -> assignToVar   "=" s   result
-                (FieldRef ref)     -> assignToField "=" ref result
-                (ArrayRef arr ref) -> assignToArr   "=" arr ref result 
+                (VariableRef s)    -> assignToVar   ModSet s   result
+                (FieldRef ref)     -> assignToField ModSet ref result
+                (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
              return $! VDouble 1
 
 evalFMatch vs vr = do
@@ -592,8 +590,8 @@ evalFMatch vs vr = do
      let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
          retS = VDouble $ fromIntegral $ rStart+1
          retL = VDouble $ fromIntegral $ rLength
-     assignToBVar "=" "RSTART"  $ retS
-     assignToBVar "=" "RLENGTH" $ retL
+     assignToBVar ModSet "RSTART"  $ retS
+     assignToBVar ModSet "RLENGTH" $ retL
      return $! retS
 
 evalFunCall f args = do
@@ -681,7 +679,7 @@ execFOREACH k f v vname arr st = do
        let k' = k {kBreak = br}
            nextFor kk []         = br ()
            nextFor kk ((_,s):ss) = do
-             assignToVar "=" vname (valstr $ B.pack s)
+             assignToVar ModSet vname (valstr $ B.pack s)
              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
              seq kk' $ exec kk' st
              nextFor kk' ss

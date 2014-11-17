@@ -8,6 +8,8 @@ import qualified Data.ByteString.Char8 as B
 import Data.Fixed (mod')
 import GHC.Float (floatToDigits)
 
+import Lang.Hawk.AST
+
 -- AWK runtime data type representation
 data Value = VString !B.ByteString !Double !Bool
            | VDouble !Double
@@ -54,10 +56,10 @@ toString (VDouble d) =
 
 calcNewValue oldVal op arg =
      case op of
-        "="  -> arg
-        "+=" -> VDouble $! toDouble oldVal + toDouble arg
-        "-=" -> VDouble $! toDouble oldVal - toDouble arg
-        "*=" -> VDouble $! toDouble oldVal * toDouble arg
-        "/=" -> VDouble $! toDouble oldVal / toDouble arg
-        "%=" -> VDouble $! toDouble oldVal `mod'` toDouble arg
+        ModSet  -> arg
+        ModAdd -> VDouble $! toDouble oldVal + toDouble arg
+        ModSub -> VDouble $! toDouble oldVal - toDouble arg
+        ModMul -> VDouble $! toDouble oldVal * toDouble arg
+        ModDiv -> VDouble $! toDouble oldVal / toDouble arg
+        ModMod -> VDouble $! toDouble oldVal `mod'` toDouble arg
         otherwise -> undefined

@@ -1,6 +1,16 @@
 module Lang.Hawk.AST where
 
-type Op = String
+data ArithOp = Add | Sub | Mul | Div | Mod | Pow
+               deriving (Eq, Show)
+
+data ModOp = ModSet | ModAdd | ModSub | ModMul | ModDiv | ModMod | ModPow
+             deriving (Eq, Show)
+
+data CmpOp = CmpEQ | CmpNE | CmpGT | CmpGE | CmpLT | CmpLE
+             deriving (Eq, Show)
+
+data LogOp = AND | OR
+             deriving (Eq, Show)
 
 data Literal = LitNumeric Double
              | LitStr String
@@ -10,22 +20,22 @@ data Literal = LitNumeric Double
 data Notation = Pre | Post
                 deriving (Eq, Show)
 
-data Expression = Arith Op Expression Expression
+data Expression = Arith ArithOp Expression Expression
                 | Const Literal
                 | FieldRef Expression
                 | VariableRef String
                 | ArrayRef String Expression
                 | BuiltInVar String
-                | Assignment Op Expression Expression
+                | Assignment ModOp Expression Expression
                 | Incr Notation Expression
                 | Decr Notation Expression
-                | Relation Op Expression Expression
+                | Relation CmpOp Expression Expression
                 | Not Expression
                 | Neg Expression
                 | Id Expression
                 | Concat Expression Expression
                 | In Expression Expression
-                | Logic Op Expression Expression
+                | Logic LogOp Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
                 | FunCall String [Expression]
