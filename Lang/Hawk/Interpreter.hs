@@ -322,32 +322,32 @@ assignToArr op arr ref val = do
 incrField n fld@(FieldRef e) = do
    oldVal <- eval fld
    newVal <- assignToField ModAdd e (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 decrField n fld@(FieldRef e) = do
    oldVal <- eval fld
    newVal <- assignToField ModSub e (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 incrVar n var@(VariableRef s) = do
    oldVal <- eval var
    newVal <- assignToVar ModAdd s (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 decrVar n var@(VariableRef s) = do
    oldVal <- eval var
    newVal <- assignToVar ModSub s (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 incrArr n arr@(ArrayRef name ref) = do
    oldVal <- eval arr
    newVal <- assignToArr ModAdd name ref (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 decrArr n arr@(ArrayRef name ref) = do
    oldVal <- eval arr
    newVal <- assignToArr ModSub name ref (VDouble 1.0)
-   return (if n == Post then oldVal else newVal)
+   return $! (if n == Post then oldVal else newVal)
 
 -- Execute a statement
 exec :: KBlock -> Statement -> Interpreter ()

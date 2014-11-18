@@ -55,11 +55,10 @@ toString (VDouble d) =
         sgn = if d >= 0 then "" else "-"
 
 calcNewValue oldVal op arg =
-     case op of
+     seq oldVal $! case op of
         ModSet  -> arg
-        ModAdd -> VDouble $! toDouble oldVal + toDouble arg
-        ModSub -> VDouble $! toDouble oldVal - toDouble arg
-        ModMul -> VDouble $! toDouble oldVal * toDouble arg
-        ModDiv -> VDouble $! toDouble oldVal / toDouble arg
-        ModMod -> VDouble $! toDouble oldVal `mod'` toDouble arg
-        otherwise -> undefined
+        ModAdd -> VDouble $ toDouble oldVal + toDouble arg
+        ModSub -> VDouble $ toDouble oldVal - toDouble arg
+        ModMul -> VDouble $ toDouble oldVal * toDouble arg
+        ModDiv -> VDouble $ toDouble oldVal / toDouble arg
+        ModMod -> VDouble $ toDouble oldVal `mod'` toDouble arg
