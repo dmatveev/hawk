@@ -121,12 +121,12 @@ intMain h inputFile = do
     initialize
     callCC $ \ex -> do
        let k = emptyKBlock {kExit = ex}
-       rs <- liftM toString $ eval (BuiltInVar RS)
-       readLoop rs k B.empty False
+       readLoop k B.empty False
        ex ()
     finalize
   where
-    readLoop rs k thisBuf eof = do
+    readLoop k thisBuf eof = do
+      rs <- liftM toString $ eval (BuiltInVar RS)
       let nrs = B.length rs
       case B.breakSubstring rs thisBuf of
          (l, rest) | B.null l && B.null rest && eof ->
@@ -136,12 +136,12 @@ intMain h inputFile = do
                         seq k' $ processLine k' l
                    | B.null rest && not eof -> do
                         nextChunk <- liftIO $ B.hGet h 8192
-                        readLoop rs k (B.append thisBuf nextChunk) (B.null nextChunk)  
+                        readLoop k (B.append thisBuf nextChunk) (B.null nextChunk)  
                    | otherwise -> do
                         let r' = B.drop nrs rest
-                            k' = k { kNext = \_ -> readLoop rs k' r' eof } 
+                            k' = k { kNext = \_ -> readLoop k' r' eof } 
                         seq k' $ processLine k' l
-                        readLoop rs k' r' eof
+                        readLoop k' r' eof
 
 
 -- processLine takes a new (next) line from input stream, prepares
@@ -164,14 +164,14 @@ processLine k s = do
          (Just s) -> s
 
 splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
-splitIntoFields str = return $ B.words str
-   -- fs <- liftM toString $ eval (BuiltInVar FS)
-   -- let fields | fs == " " = B.words str                        -- Handles ' ' and '\t'
-   --            | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
-   --            | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
-   --                              rs = invRegions ms (B.length str)
-   --                          in map (\(s,l) -> B.take l (B.drop s str)) rs
-   -- return fields
+splitIntoFields str = do
+   fs <- liftM toString $ eval (BuiltInVar FS)
+   let fields | fs == " " = B.words str                        -- Handles ' ' and '\t'
+              | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
+              | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
+                                rs = invRegions ms (B.length str)
+                            in map (\(s,l) -> B.take l (B.drop s str)) rs
+   return fields
 
 -- Checks if the given top-level form matches the current line
 matches :: TopLevel -> Interpreter Bool
