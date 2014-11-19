@@ -319,35 +319,34 @@ assignToArr op arr ref val = do
    modify $ (\s -> s { hcArrays = newArrays })
    return $! newValue
 
+
+ppval :: Double -> Double -> Notation -> Value
+ppval old new Post = VDouble old
+ppval old new Pre  = VDouble new
+
 incrField n fld@(FieldRef e) = do
-   oldVal <- eval fld
-   newVal <- assignToField ModAdd e (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToField ModAdd e (VDouble 1.0)
+   return $! ppval (d-1) d n
 
 decrField n fld@(FieldRef e) = do
-   oldVal <- eval fld
-   newVal <- assignToField ModSub e (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToField ModSub e (VDouble 1.0)
+   return $! ppval (d+1) d n
 
 incrVar n var@(VariableRef s) = do
-   oldVal <- eval var
-   newVal <- assignToVar ModAdd s (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToVar ModAdd s (VDouble 1.0)
+   return $! ppval (d-1) d n
 
 decrVar n var@(VariableRef s) = do
-   oldVal <- eval var
-   newVal <- assignToVar ModSub s (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToVar ModSub s (VDouble 1.0)
+   return $! ppval (d+1) d n
 
 incrArr n arr@(ArrayRef name ref) = do
-   oldVal <- eval arr
-   newVal <- assignToArr ModAdd name ref (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToArr ModAdd name ref (VDouble 1.0)
+   return $! ppval (d-1) d n
 
 decrArr n arr@(ArrayRef name ref) = do
-   oldVal <- eval arr
-   newVal <- assignToArr ModSub name ref (VDouble 1.0)
-   return $! (if n == Post then oldVal else newVal)
+   (VDouble d) <- assignToArr ModSub name ref (VDouble 1.0)
+   return $! ppval (d+1) d n
 
 -- Execute a statement
 exec :: KBlock -> Statement -> Interpreter ()
