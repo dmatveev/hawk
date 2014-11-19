@@ -30,13 +30,13 @@ Currently use ~Regex-TDFA~ as-is.
 
 | Expressoin         | Parser | Interpreter | Comments                                                         |
 |--------------------+--------+-------------+------------------------------------------------------------------|
-| Constants          | YES    |             | Attoparsec (and old ~read`, actually) handles all common formats |
+| Constants          | YES    |             | Attoparsec (and old ~read~, actually) handles all common formats |
 | Variables          | YES    | YES         |                                                                  |
 | Arrays             | WIP    | WIP         | Compound subscripts are not supported                            |
 | Built-in variables | YES    | WIP         | See "Built-in variables"                                         |
 | Field variables    | YES    | YES         |                                                                  |
 | Operators          | YES    | WIP         | See "Operators"                                                  |
-| Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~                                     |
+| Functions          | YES    | WIP         | All but ~printf~ / ~sprintf~ and I/O                             |
 
 ** Built-in variables
 
@@ -52,7 +52,7 @@ Currently use ~Regex-TDFA~ as-is.
 | ~OFMT~     | YES    | NO          | As no ~printf()~ in general           |
 | ~OFS~      | YES    | YES         |                                       |
 | ~ORS~      | YES    | YES         |                                       |
-| ~RS~       | YES    | WIP         | No regexp support                     |
+| ~RS~       | YES    | WIP         | No regexp support, no "" support      |
 | ~RLENGTH~  | YES    | YES         |                                       |
 | ~RSTART~   | YES    | YES         |                                       |
 | ~SUBSEP~   | YES    | NO          | Compound subscripts are not supported |
@@ -83,23 +83,30 @@ Currently use ~Regex-TDFA~ as-is.
 | ~()~              | YES    | YES         | No support required on the interpreter side.   |
 
 
+| Operator | Parser | Interpreter | Comments                     |
+|----------+--------+-------------+------------------------------|
+| ~>~      | NO     | NO          | Output redirection (~print~) |
+| ~>>~     | NO     | NO          | Output redirectoin (~print~) |
+| ~<pipe>~ | NO     | NO          |                              |
+|          |        |             |                              |
+
 ** Built-in functions 
 
-| Function     | Interpreter | Comments | Function           | Interpreter | Comments |
-|--------------+-------------+----------+--------------------+-------------+----------|
-| /            |             | >        | <                  |             | >        |
-| ~atan2(y,x)~ | YES         |          | ~gsub(r,s)~        | YES         |          |
-| ~cos(x)~     | YES         |          | ~gsub(r,s,t)~      | YES         |          |
-| ~exp(x)~     | YES         |          | ~index(s,t)~       | YES         |          |
-| ~int(x)~     | YES         |          | ~length(s)~        | YES         |          |
-| ~log(x)~     | YES         |          | ~match(s,r)~       | YES         |          |
-| ~rand(x)~    | YES         |          | ~split(s,a)~       | YES         |          |
-| ~sin(x)~     | YES         |          | ~split(s,a,fs)~    | YES         |          |
-| ~sqrt(x)~    | YES         |          | ~sprintf(fmt,...)~ | NO          |          |
-| ~srand()~    | YES         |          | ~sub(r,s)~         | YES         |          |
-| ~srand(x)~   | YES         |          | ~sub(r,s,t)~       | YES         |          |
-|              |             |          | ~substr(s,p)~      | YES         |          |
-|              |             |          | ~substr(s,p,n)~    | YES         |          |
+| Function     | Interpreter | Comments | Function           | Interpreter | Comments | Function          | Interpreter | Comments |
+|--------------+-------------+----------+--------------------+-------------+----------+-------------------+-------------+----------|
+| /            |             | >        | <                  |             | >        | /                 |             | >        |
+| ~atan2(y,x)~ | YES         |          | ~gsub(r,s)~        | YES         |          | ~close(filename)~ | NO          |          |
+| ~cos(x)~     | YES         |          | ~gsub(r,s,t)~      | YES         |          | ~close(command)~  | NO          |          |
+| ~exp(x)~     | YES         |          | ~index(s,t)~       | YES         |          | ~system(command)~ | NO          |          |
+| ~int(x)~     | YES         |          | ~length(s)~        | YES         |          | ~getline~         | NO          |          |
+| ~log(x)~     | YES         |          | ~match(s,r)~       | YES         |          | ~getline x~       | NO          |          |
+| ~rand(x)~    | YES         |          | ~split(s,a)~       | YES         |          | ~getline < f~     | NO          |          |
+| ~sin(x)~     | YES         |          | ~split(s,a,fs)~    | YES         |          | ~getline x < f~   | NO          |          |
+| ~sqrt(x)~    | YES         |          | ~sprintf(fmt,...)~ | NO          |          |                   |             |          |
+| ~srand()~    | YES         |          | ~sub(r,s)~         | YES         |          |                   |             |          |
+| ~srand(x)~   | YES         |          | ~sub(r,s,t)~       | YES         |          |                   |             |          |
+|              |             |          | ~substr(s,p)~      | YES         |          |                   |             |          |
+|              |             |          | ~substr(s,p,n)~    | YES         |          |                   |             |          |
 
 
 ** Run-time value coercion
