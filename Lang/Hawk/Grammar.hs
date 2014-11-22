@@ -1,6 +1,7 @@
  module Lang.Hawk.Grammar where
 
 import Data.Maybe
+import Control.Applicative ((<$>), (<*>), (<*), (*>))
 import Control.Monad (when, liftM)
 
 import Text.Parsec
@@ -55,109 +56,49 @@ lexer = P.makeTokenParser
                               ,"~","!~"
                               ,"&&","||","!",",",";"]
         })
-parens     = P.parens lexer
-natural    = P.natural lexer
-float      = P.float lexer
+parens     = P.parens        lexer
+natural    = P.natural       lexer
+float      = P.float         lexer
 strlit     = P.stringLiteral lexer
-reserved   = P.reserved lexer
-reservedOp = P.reservedOp lexer
-identifier = P.identifier lexer
-symbol     = P.symbol lexer
-whitespace = P.whiteSpace lexer
+rsvd       = P.reserved      lexer
+rsvdOp     = P.reservedOp    lexer
+identifier = P.identifier    lexer
+symbol     = P.symbol        lexer
+whitespace = P.whiteSpace    lexer
 
 -- Pattern grammar
-pattern = try range
-        <|> regexp
-        <|> exprp
-        <|> begin
-        <|> end
-        <?> "pattern"
-
-begin = do
-     reserved "BEGIN"
-     return BEGIN
-
-end = do
-     reserved "END"
-     return END
-
-exprp = do
-     e <- expr
-     return $ EXPR e
-     <?> "expression pattern"
-
-regexp = do
-     s <- regex
-     return $ RE s
-     <?> "regexp"
-
-range = do
-     pStart <- singlePattern
-     reservedOp ","
-     pEnd <- singlePattern
-     return $ RANGE pStart pEnd
-     <?> "range pattern"
-  where
-    singlePattern = exprp <|> regexp
-
+pattern = try range <|> regexp <|> exprp <|> begin <|> end <?> "pattern"
+begin   = rsvd "BEGIN" >> return BEGIN
+end     = rsvd "END"   >> return END
+exprp   = EXPR  <$> expr  <?> "expression pattern"
+regexp  = RE    <$> regex <?> "regexp"
+range   = RANGE <$> sp <* rsvdOp "," <*> sp <?> "range pattern" where sp = exprp <|> regexp
 
 -- Expression grammar
-expr = buildExpressionParser table term
-     <?> "expression"
+expr = buildExpressionParser table term <?> "expression"
 
 term = parens expr
      <|> try funcall
      <|> literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
 
-literal = stringLit <|> numericLit <|> regexLit
-     <?> "literal"
+literal = stringLit <|> numericLit <|> regexLit <?> "literal"
 
-regexLit   = regex   >>= (return . Const . LitRE)
-stringLit  = strlit  >>= (return . Const . LitStr)
-numericLit = do
-   v <- (try float) <|> (liftM fromIntegral $ natural)
-   return $ Const $ LitNumeric v
+regexLit   = (Const . LitRE)      <$> regex
+stringLit  = (Const . LitStr)     <$> strlit
+numericLit = (Const . LitNumeric) <$> (try float <|> liftM fromIntegral natural)
+regex      = char '/' *> manyTill anyChar (char '/') <* whitespace <?> "regex"
 
-regex =  do
-     char '/'
-     s <- manyTill anyChar (char '/')
-     whitespace
-     return s
-     <?> "regex"
+fieldRef = FieldRef <$> (char '$' *> r <?> "data field reference")
+   where r = numericLit <|> (try builtInVars) <|> variableRef <|> parens expr
 
-fieldRef = do
-   char '$'
-   e <- (numericLit <|> (try builtInVars) <|> variableRef <|> parens expr)
-   return $ FieldRef e
-   <?> "data field reference"
+variableRef = VariableRef <$> identifier <?> "variable reference"
+arrayRef = ArrayRef <$> identifier <* char '[' <*> expr <* char ']' <* whitespace
 
-variableRef = do
-   s <- identifier
-   return $ VariableRef s
-   <?> "variable reference"
+funcall = FunCall <$> identifier <*> args <* whitespace <?> "function call"
+   where args = char '(' *> expr `sepBy` (symbol ",") <* char ')'
 
-arrayRef = do
-   n <- identifier
-   char '['
-   i <- expr
-   char ']'
-   whitespace
-   return $ ArrayRef n i
-
-funcall = do
-   f <- identifier
-   char '('
-   s <- expr `sepBy` (symbol ",")
-   char ')'
-   whitespace
-   return $ FunCall f s
-   <?> "function call"
-
-builtInVar (s,b) = do
-   reserved s
-   return $ BuiltInVar b
-
-builtInVars = choice $ map builtInVar hawkBuiltinVars
+builtInVar (s,b) = rsvd s >> return (BuiltInVar b)
+builtInVars      = choice $ map builtInVar hawkBuiltinVars
 
 -- Decreasing presedence order!
 -- The reversed version of The AWK Book's table 2-8.
@@ -183,54 +124,27 @@ arith s o = binary s (Arith      o) AssocLeft
 asgn  s o = binary s (Assignment o) AssocRight
 logic s o = binary s (Logic      o) AssocRight
 
-binary  name fun assoc = Infix   (do {reservedOp name; return fun}) assoc
-prefix  name fun       = Prefix  (do {reservedOp name; return fun})
-postfix name fun       = Postfix (do {reservedOp name; return fun})
+binary  name fun assoc = Infix   (do {rsvdOp name; return fun}) assoc
+prefix  name fun       = Prefix  (do {rsvdOp name; return fun})
+postfix name fun       = Postfix (do {rsvdOp name; return fun})
 
 -- Statements
-stExpr = do
-    e <- expr
-    return $ Expression e
+stExpr = Expression <$> expr
 
-stPrint = do
-    reserved "print"
-    whitespace
-    es <- expr `sepBy` (symbol ",")
-    whitespace
-    return $ PRINT es
-    <?> "print"
+stPrint = PRINT <$> (rsvd "print" *> whitespace *> args <* whitespace) <?> "print"
+   where args = expr `sepBy` (symbol ",")
 
-stBlock = do
-    symbol "{"
-    ss <- many statement
-    symbol "}"
-    return $ Block ss
-    <?> "block of statements"
+stBlock = Block <$> (symbol "{" *> many statement <* symbol "}") <?> "block of statements"
 
-stIf = do
-    reserved "if"
-    cond <- parens expr
-    thenBranch <- statement
-    elseBranch <- optionMaybe $ do
-       reserved "else"
-       statement
-    return $ IF cond thenBranch elseBranch
+stIf = IF <$> (rsvd "if" >> parens expr) <*> statement <*> tryElse
+  where tryElse = optionMaybe (rsvd "else" >> statement)
 
-stWhile = do
-    reserved "while"
-    cond <- parens expr
-    body <- (stBlock <|> stExpr)
-    return $ WHILE cond body
+stWhile = WHILE <$> (rsvd "while" >> parens expr) <*> (stBlock <|> stExpr)
 
-stDoWhile = do
-    reserved "do"
-    body <- (stBlock <|> stExpr)
-    reserved "while"
-    cond <- parens expr
-    return $ DO body cond
+stDoWhile = DO <$> (rsvd "do" >> (stBlock <|> stExpr)) <*> (rsvd "while" *> parens expr)
 
 stFor = do
-    reserved "for"
+    rsvd "for"
     (mInit,mCond,mStep) <- parens $ do
        i <- optionMaybe expr
        symbol ";"
@@ -242,34 +156,22 @@ stFor = do
     return $ FOR mInit mCond mStep s
 
 stForEach = do
-    reserved "for"
+    rsvd "for"
     (var,arr) <- parens $ do
        v <- variableRef
-       reserved "in"
+       rsvd "in"
        a <- identifier
        return (v,a)
     s <- statement
     return $ FOREACH var arr s
 
-stDelete = do
-    reserved "delete"
-    a <- arrayRef
-    return $ DELETE a
-
-stBreak = reserved "break"    >> return BREAK
-stCont  = reserved "continue" >> return CONT
-stNext  = reserved "next"     >> return NEXT
-stNop   = symbol   ";"        >> return NOP
-
-stExit = do
-    reserved "exit"
-    mCode <- optionMaybe expr
-    return $ EXIT mCode
-
-stReturn = do
-    reserved "return"
-    mVal <- optionMaybe expr
-    return $ RETURN mVal
+stDelete = DELETE <$> (rsvd "delete" >> arrayRef)
+stBreak  = rsvd "break"    >> return BREAK
+stCont   = rsvd "continue" >> return CONT
+stNext   = rsvd "next"     >> return NEXT
+stNop    = symbol   ";"        >> return NOP
+stExit   = EXIT   <$> (rsvd "exit"   >> optionMaybe expr)
+stReturn = RETURN <$> (rsvd "return" >> optionMaybe expr)
 
 statement = try stIf
           <|> try stDoWhile
@@ -293,7 +195,7 @@ statement = try stIf
 toplevel = function <|> section
 
 function = do
-    reserved "function"
+    rsvd "function"
     name <- identifier
     params <- parens $ identifier `sepBy` (symbol ",")
     body <- statement
@@ -308,16 +210,6 @@ section = do
     return $ Section mp ma
     <?> "section"
 
-action = do
-    char '{'
-    whitespace
-    s <- many statement
-    char '}'
-    return $ Block s
-    <?> "action"
+action = Block <$> (char '{' *> whitespace *> many statement <* char '}') <?> "action"
 
-awk = do
-    whitespace
-    ss <- many toplevel
-    eof
-    return ss
+awk = whitespace *> many toplevel <* eof

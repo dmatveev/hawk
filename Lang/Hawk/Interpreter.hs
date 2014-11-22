@@ -112,7 +112,6 @@ finalize = do
   where isEnd (Section (Just END) _) = return True
         isEnd _                      = return False
 
-
 -- This is actually an entry point to the Interpreter.
 intMain :: Handle -> String -> Interpreter ()
 intMain h inputFile = do
