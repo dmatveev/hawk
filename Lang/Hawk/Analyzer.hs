@@ -79,8 +79,7 @@ runTracer :: Tracer a -> Effects -> Effects
 runTracer (Tracer s) e = execState s e
 
 mtry :: (Monad m) => (a -> m b) -> Maybe a -> m ()
-mtry f (Just a) = f a >> return ()
-mtry f _        = return () 
+mtry f ma = maybe r (\a -> f a >> r) ma where r = return ()
 
 cmb' :: Tracer Tag -> Tracer Tag -> Tracer Tag
 cmb' p v = cmb <$> gets eDepth <*> p <*> v 
@@ -91,8 +90,8 @@ cmb _ _      GLOBAL = GLOBAL
 cmb 0 UNDEF  LOCAL  = LOCAL
 cmb _ UNDEF  LOCAL  = GLOBAL
 
-updVarTag  s t = modify (\e -> e {eVars = M.insert s t (eVars e)}) >> return t
-updBVarTag b t = modify (\e -> e {eBVars = M.insert b t (eBVars e)}) >> return t
+updVarTag  s t = modify (\e -> e {eVars     = M.insert s t (eVars  e)}) >> return t
+updBVarTag b t = modify (\e -> e {eBVars    = M.insert b t (eBVars e)}) >> return t
 updFields    t = modify (\e -> e {eFields   = t})    >> return t
 updArrs        = modify (\e -> e {eArrays   = True}) >> return GLOBAL
 updFunCalls    = modify (\e -> e {eFunCalls = True}) >> return GLOBAL
