@@ -24,9 +24,9 @@ runTrace progFile = do
   source <- readFile progFile
   case parse awk progFile source of
      (Left e)  -> putStrLn $ show e
-     (Right a) -> do putStrLn $ show (analyze a)
+     (Right a) -> do putStrLn $ show (analyze $ procUnits a)
                      putStrLn $ "The code is " ++ (if pure a then "PURE" else "WITH EFFECTS")
-
+ 
 main :: IO ()
 main = do
   args <- getArgs

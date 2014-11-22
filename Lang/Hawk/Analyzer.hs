@@ -91,6 +91,7 @@ cmb _ GLOBAL _      = GLOBAL
 cmb _ _      GLOBAL = GLOBAL
 cmb 0 UNDEF  LOCAL  = LOCAL
 cmb _ UNDEF  LOCAL  = GLOBAL
+cmb _ LOCAL  LOCAL  = LOCAL
 
 updVarTag  s t = modify (\e -> e {eVars     = M.insert s t (eVars  e)}) >> return t
 updBVarTag b t = modify (\e -> e {eBVars    = M.insert b t (eBVars e)}) >> return t
@@ -170,6 +171,11 @@ traceTL _                     = return ()
 analyze :: AwkSource -> Effects
 analyze ts = runTracer (mapM_ traceTL ts) emptyEffects
 
+procUnits :: AwkSource -> AwkSource
+procUnits s = filter p s
+  where p (Section mp _) = not (mp == Just BEGIN || mp == Just END)
+        p _              = False
+
 pure :: AwkSource -> Bool
 pure s = noGlobalVars && noBVarsModified && noArrays && noFunCalls && noRangePatterns
    where 
@@ -179,4 +185,4 @@ pure s = noGlobalVars && noBVarsModified && noArrays && noFunCalls && noRangePat
      noFunCalls      = not $ eFunCalls efs 
      noRangePatterns = not $ eRanges   efs
 
-     efs = analyze s
+     efs = analyze $ procUnits s
