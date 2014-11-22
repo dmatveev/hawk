@@ -2,6 +2,8 @@
 
 module Lang.Hawk.Analyzer where
 
+import Data.List (find)
+import Data.Maybe (isNothing)
 import Control.Applicative (Applicative, (<*>), (<$>))
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -167,3 +169,14 @@ traceTL _                     = return ()
 
 analyze :: AwkSource -> Effects
 analyze ts = runTracer (mapM_ traceTL ts) emptyEffects
+
+pure :: AwkSource -> Bool
+pure s = noGlobalVars && noBVarsModified && noArrays && noFunCalls && noRangePatterns
+   where 
+     noGlobalVars    = isNothing $ find ((== GLOBAL) . snd) $ M.toList $ eVars  efs 
+     noBVarsModified = all              ((== LOCAL)  . snd) $ M.toList $ eBVars efs
+     noArrays        = not $ eArrays   efs
+     noFunCalls      = not $ eFunCalls efs 
+     noRangePatterns = not $ eRanges   efs
+
+     efs = analyze s
