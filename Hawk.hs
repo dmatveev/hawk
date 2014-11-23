@@ -6,8 +6,8 @@ import System.Environment (getArgs)
 import Text.Parsec (parse)
 
 import Lang.Hawk.Grammar (awk)
-import Lang.Hawk.Interpreter
 import Lang.Hawk.Analyzer
+import Lang.Hawk.Scheduler
 
 runHawk :: String -> String -> IO ()
 runHawk progFile inputFile = do
@@ -15,9 +15,7 @@ runHawk progFile inputFile = do
   let ast = parse awk progFile source
   case ast of
     (Left e)  -> putStrLn $ show e
-    (Right a) -> bracket (openFile inputFile ReadMode) hClose $ \h -> do
-         runInterpreter (intMain h inputFile) (emptyContext a)
-         return ()
+    (Right a) -> bracket (openFile inputFile ReadMode) hClose $ \h -> run a h inputFile
 
 runTrace :: String -> IO ()
 runTrace progFile = do

@@ -1,10 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, OverloadedStrings #-}
 
-module Lang.Hawk.Interpreter
-    ( runInterpreter
-    , intMain
-    , emptyContext
-    ) where
+module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
 
@@ -89,7 +85,6 @@ newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
 
-
 -- Execute all BEGIN actions, if any
 initialize :: Interpreter ()
 initialize = do
@@ -113,34 +108,34 @@ finalize = do
         isEnd _                      = return False
 
 -- This is actually an entry point to the Interpreter.
-intMain :: Handle -> String -> Interpreter ()
-intMain h inputFile = do
-    assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
-    assignToBVar ModSet FNR      (VDouble 0)
-    initialize
-    callCC $ \ex -> do
-       let k = emptyKBlock {kExit = ex}
-       readLoop k B.empty False
-       ex ()
-    finalize
-  where
-    readLoop k thisBuf eof = do
-      rs <- liftM toString $ eval (BuiltInVar RS)
-      let nrs = B.length rs
-      case B.breakSubstring rs thisBuf of
-         (l, rest) | B.null l && B.null rest && eof ->
-                        return ()
-                   | B.null rest && eof -> do
-                        let k' = k { kNext = (const $ return ()) }
-                        seq k' $ processLine k' l
-                   | B.null rest && not eof -> do
-                        nextChunk <- liftIO $ B.hGet h 8192
-                        readLoop k (B.append thisBuf nextChunk) (B.null nextChunk)  
-                   | otherwise -> do
-                        let r' = B.drop nrs rest
-                            k' = k { kNext = \_ -> readLoop k' r' eof } 
-                        seq k' $ processLine k' l
-                        readLoop k' r' eof
+-- intMain :: Handle -> String -> Interpreter ()
+-- intMain h inputFile = do
+--     assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
+--     assignToBVar ModSet FNR      (VDouble 0)
+--     initialize
+--     callCC $ \ex -> do
+--        let k = emptyKBlock {kExit = ex}
+--        readLoop k B.empty False
+--        ex ()
+--     finalize
+--   where
+--     readLoop k thisBuf eof = do
+--       rs <- liftM toString $ eval (BuiltInVar RS)
+--       let nrs = B.length rs
+--       case B.breakSubstring rs thisBuf of
+--          (l, rest) | B.null l && B.null rest && eof ->
+--                         return ()
+--                    | B.null rest && eof -> do
+--                         let k' = k { kNext = (const $ return ()) }
+--                         seq k' $ processLine k' l
+--                    | B.null rest && not eof -> do
+--                         nextChunk <- liftIO $ B.hGet h 8192
+--                         readLoop k (B.append thisBuf nextChunk) (B.null nextChunk)  
+--                    | otherwise -> do
+--                         let r' = B.drop nrs rest
+--                             k' = k { kNext = \_ -> readLoop k' r' eof } 
+--                         seq k' $ processLine k' l
+--                         readLoop k' r' eof
 
 
 -- processLine takes a new (next) line from input stream, prepares
@@ -162,15 +157,18 @@ processLine k s = do
          Nothing  -> (PRINT [])
          (Just s) -> s
 
+splitIntoFields' :: B.ByteString -> B.ByteString -> [B.ByteString]
+splitIntoFields' fs str
+    | fs == " " = B.words str                        -- Handles ' ' and '\t'
+    | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
+    | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
+                      rs = invRegions ms (B.length str)
+                  in map (\(s,l) -> B.take l (B.drop s str)) rs
+
 splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
 splitIntoFields str = do
    fs <- liftM toString $ eval (BuiltInVar FS)
-   let fields | fs == " " = B.words str                        -- Handles ' ' and '\t'
-              | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
-              | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
-                                rs = invRegions ms (B.length str)
-                            in map (\(s,l) -> B.take l (B.drop s str)) rs
-   return fields
+   return $ splitIntoFields' fs str
 
 -- Checks if the given top-level form matches the current line
 matches :: TopLevel -> Interpreter Bool
