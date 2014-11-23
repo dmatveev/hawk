@@ -4,7 +4,7 @@ module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
 
-import Text.Regex.TDFA
+import Text.Regex.PCRE
 
 import Data.Fixed (mod')
 
