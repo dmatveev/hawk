@@ -61,6 +61,7 @@ data Effects = Effects
              , eFunCalls :: Bool
              , eRanges   :: Bool
              , eDepth    :: Int
+             , eFlow     :: Bool
              } deriving (Show)
 
 emptyEffects :: Effects
@@ -72,6 +73,7 @@ emptyEffects = Effects
              , eFunCalls = False
              , eRanges   = False
              , eDepth    = 0
+             , eFlow     = False
              }
 
 newtype Tracer a = Tracer (State Effects a)
@@ -99,6 +101,7 @@ updFields    t = modify (\e -> e {eFields   = t})    >> return t
 updArrs        = modify (\e -> e {eArrays   = True}) >> return GLOBAL
 updFunCalls    = modify (\e -> e {eFunCalls = True}) >> return GLOBAL
 updRange       = modify (\e -> e {eRanges   = True}) >> return GLOBAL
+updFlow        = modify (\e -> e {eFlow     = True})
 
 varTag :: String -> Tracer Tag
 varTag s = gets (M.findWithDefault UNDEF s . eVars)
@@ -155,9 +158,13 @@ traceS (FOR mi mc ms s)       = trBlock $ mapM_ (mtry traceE) [mi, mc, ms] >> tr
 traceS (FOREACH e _ s)        = trBlock $ traceE e >> traceS s
 traceS (DO s e)               = trBlock $ traceS s >> traceE e >> return ()
 traceS (PRINT es)             = mapM_ traceE es
-traceS (EXIT me)              = mtry traceE me
+traceS (EXIT me)              = mtry traceE me >> updFlow
+traceS (BREAK)                = return ()
+traceS (CONT)                 = return ()
+traceS (NEXT)                 = updFlow
+traceS (NOP)                  = return ()
 traceS (DELETE e)             = traceE e >> return ()
-traceS (RETURN me)            = mtry traceE me
+traceS (RETURN me)            = mtry traceE me >> updFlow
 
 traceP :: Pattern -> Tracer ()
 traceP (EXPR e)               = traceE e >> return ()
@@ -177,12 +184,14 @@ procUnits s = filter p s
         p _              = False
 
 pure :: AwkSource -> Bool
-pure s = noGlobalVars && noBVarsModified && noArrays && noFunCalls && noRangePatterns
+pure s =  noGlobalVars && noBVarsModified && noArrays
+       && noFunCalls   && noRangePatterns && noControlFlow
    where 
      noGlobalVars    = isNothing $ find ((== GLOBAL) . snd) $ M.toList $ eVars  efs 
      noBVarsModified = all              ((== LOCAL)  . snd) $ M.toList $ eBVars efs
      noArrays        = not $ eArrays   efs
      noFunCalls      = not $ eFunCalls efs 
      noRangePatterns = not $ eRanges   efs
+     noControlFlow   = not $ eFlow     efs
 
      efs = analyze $ procUnits s
