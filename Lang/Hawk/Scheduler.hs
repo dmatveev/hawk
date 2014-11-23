@@ -5,12 +5,11 @@ module Lang.Hawk.Scheduler where
 import qualified Data.ByteString.Char8 as B
 import qualified Data.IntMap as IM
 
-import Control.Applicative (Applicative, (<$>), (<*>))
+import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Exception.Base (evaluate)
 import Control.Monad.State.Strict
 
 import Lang.Hawk.AST
-import Lang.Hawk.Analyzer
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Value
 
@@ -39,7 +38,7 @@ data ReaderState = ReaderState
                  , rH   :: !Handle
                  , rRS  :: !B.ByteString
                  , rFS  :: !B.ByteString
-                 , rQ   :: !(MVar [Workload])
+                 , rQ   :: !(MVar (Maybe Workload))
                  , rTmp :: ![Record]
                  }
 
@@ -51,15 +50,12 @@ sendWorkload :: ReaderThread ()
 sendWorkload = do
     tmp <- gets rTmp
     if (not $ null tmp)
-    then do
-      wid <- nextWID
-      let w = Workload wid (reverse tmp)
-      qq <- gets rQ
-      liftIO $ putMVar qq [w]
-      modify $ \s -> s { rTmp = [] }
-    else do
-      qq <- gets rQ
-      liftIO $ putMVar qq []
+    then do -- wid <- nextWID
+            w <- Workload <$> nextWID <*> (pure $ reverse tmp)
+            gets rQ >>= (liftIO . flip putMVar (Just w))
+            modify $ \s -> s { rTmp = [] }
+    else do qq <- gets rQ
+            liftIO $ putMVar qq Nothing
   where nextWID = modify (\s -> s { rWID = succ (rWID s)}) >> gets rWID
 
 enqueue :: B.ByteString -> ReaderThread ()
@@ -70,7 +66,7 @@ enqueue l = do
        newR = Record nid l flds
    modify $ \s -> seq newR $ s { rTmp = newR:(rTmp s) }
    tmpSz <- gets (length . rTmp)
-   when (tmpSz >= 20) sendWorkload
+   when (tmpSz >= 10) sendWorkload
   where nextRecID = modify (\s -> s { rNR = succ (rNR s)}) >> gets rNR
 
 reader :: ReaderThread ()
@@ -94,42 +90,34 @@ reader = do
 runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
-worker :: AwkSource -> MVar [Workload] -> IO ()
-worker src mq = do
-   ctx  <- runInterpreter wrkInit (emptyContext src)
-   ctx' <- workerLoop ctx
-   runInterpreter finalize ctx'
-   return ()
+worker :: AwkSource -> MVar (Maybe Workload) -> IO ()
+worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
  where
-   workerLoop ctx = do
-      w <- takeMVar mq
-      jobLoop ctx w
-
-   jobLoop ctx []     = return ctx
-   jobLoop ctx (w:ws) = procLoop ctx (wRS w)
-
-   procLoop ctx []     = workerLoop ctx
-   procLoop ctx (r:rs) = do ctx' <- runInterpreter (wrkProc r) ctx
-                            procLoop ctx' rs
-
-   wrkInit = do
-    -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
-    assignToBVar ModSet FNR      (VDouble 0)
-    initialize
+   wrkMain = do
+      -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
+      assignToBVar ModSet FNR      (VDouble 0)
+      initialize
+      workerLoop
+      finalize
+ 
+   workerLoop = do
+      q <- liftIO $ takeMVar mq
+      case q of
+        (Just (Workload _ rs)) -> forM rs wrkProc >> workerLoop
+        Nothing                -> return ()
 
    wrkProc (Record nr l flds) = do
-    let thisFldMap = IM.fromList (zip [1,2..] (map valstr flds)) 
-    modify $ \s -> s { hcThisLine = l, hcFields = thisFldMap}
-    assignToBVar ModSet NF  (VDouble $ fromIntegral $ (length flds))
-    assignToBVar ModAdd NR  (VDouble 1)
-    assignToBVar ModAdd FNR (VDouble 1)
-    -- find matching actions for this line and execute them
-    actions <- (gets hcCode >>= filterM matches)
-    forM_ actions $ \(Section _ ms) -> exec (emptyKBlock) $
-       case ms of
-         Nothing  -> (PRINT [])
-         (Just s) -> s
-
+      let thisFldMap = IM.fromList (zip [1,2..] (map valstr flds)) 
+      modify $ \s -> s { hcThisLine = l, hcFields = thisFldMap}
+      assignToBVar ModSet NF  (VDouble $ fromIntegral $ (length flds))
+      assignToBVar ModAdd NR  (VDouble 1)
+      assignToBVar ModAdd FNR (VDouble 1)
+      -- find matching actions for this line and execute them
+      actions <- (gets hcCode >>= filterM matches)
+      forM_ actions $ \(Section _ ms) -> exec (emptyKBlock) $
+         case ms of
+           Nothing  -> (PRINT [])
+           (Just s) -> s
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
@@ -137,6 +125,5 @@ run src h file = inThread $ do
     j <- newEmptyMVar
     forkIO $ runReaderThread reader h "\n" " " q >> return ()
     forkFinally (worker src q) $ \_ -> putMVar j ()
-    -- runInterpreter (intMain h file) (emptyContext src)
     takeMVar j
     return ()
