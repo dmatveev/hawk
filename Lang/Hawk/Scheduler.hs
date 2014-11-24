@@ -95,7 +95,7 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
  where
    wrkMain = do
       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
-      assignToBVar ModSet FNR      (VDouble 0)
+      modify $ \s -> s { hcFNR = VDouble 0 }
       initialize
       workerLoop
       finalize
@@ -108,10 +108,12 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
 
    wrkProc (Record nr l flds) = do
       let thisFldMap = IM.fromList (zip [1,2..] (map valstr flds)) 
-      modify $ \s -> s { hcThisLine = l, hcFields = thisFldMap}
-      assignToBVar ModSet NF  (VDouble $ fromIntegral $ (length flds))
-      assignToBVar ModAdd NR  (VDouble 1)
-      assignToBVar ModAdd FNR (VDouble 1)
+      modify $ \s -> s { hcThisLine = l
+                       , hcFields   = thisFldMap
+                       , hcNF       = VDouble (fromIntegral $ length flds)
+                       , hcNR       = VDouble (succ $ toDouble $ hcNR s)
+                       , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
+                       }
       -- find matching actions for this line and execute them
       actions <- (gets hcCode >>= filterM matches)
       forM_ actions $ \(Section _ ms) -> exec (emptyKBlock) $

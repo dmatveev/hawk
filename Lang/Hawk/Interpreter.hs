@@ -29,11 +29,25 @@ data HawkContext = HawkContext
                  , hcFields   :: (IM.IntMap Value)
                  , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
-                 , hcBVars    :: !(M.Map BVar Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
+
+                 , hcARGC     :: !Value
+                 , hcARGV     :: !Value
+                 , hcFILENAME :: !Value
+                 , hcFNR      :: !Value
+                 , hcFS       :: !Value
+                 , hcNF       :: !Value
+                 , hcNR       :: !Value
+                 , hcOFMT     :: !Value
+                 , hcOFS      :: !Value
+                 , hcORS      :: !Value
+                 , hcRLENGTH  :: !Value
+                 , hcRS       :: !Value
+                 , hcRSTART   :: !Value
+                 , hcSUBSEP   :: !Value
                  }
 
 data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
@@ -64,11 +78,25 @@ emptyContext s = HawkContext
                  , hcFields   = IM.empty
                  , hcVars     = M.empty
                  , hcArrays   = M.empty
-                 , hcBVars    = M.fromList initialBuiltInVars
                  , hcStack    = []
                  , hcRetVal   = VDouble 0
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
+
+                 , hcARGC     = defstr ""
+                 , hcARGV     = defstr ""
+                 , hcFILENAME = defstr "" 
+                 , hcFNR      = VDouble 0 
+                 , hcFS       = defstr " " 
+                 , hcNF       = VDouble 0 
+                 , hcNR       = VDouble 0 
+                 , hcOFMT     = defstr "%.6f" 
+                 , hcOFS      = defstr " " 
+                 , hcORS      = defstr "\n" 
+                 , hcRLENGTH  = VDouble 0 
+                 , hcRS       = defstr "\n" 
+                 , hcRSTART   = VDouble 0 
+                 , hcSUBSEP   = defstr "\034" 
                  }
   where initialBuiltInVars = [ (FNR, VDouble 0)
                              , (NR,  VDouble 0)
@@ -147,9 +175,10 @@ processLine k s = do
     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
         thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
     put $! thisContext
-    assignToBVar ModSet NF  (VDouble $ fromIntegral $ length thisFields)
-    assignToBVar ModAdd NR  (VDouble 1)
-    assignToBVar ModAdd FNR (VDouble 1)
+    modify $ \s -> s { hcNF  = VDouble (fromIntegral $ length thisFields)
+                     , hcNR  = VDouble (succ $ toDouble $ hcNR s)
+                     , hcFNR = VDouble (succ $ toDouble $ hcNR s)
+                     }
     -- find matching actions for this line and execute them
     actions <- (gets hcCode >>= filterM matches)
     forM_ actions $ \(Section _ ms) -> exec k $
@@ -301,11 +330,8 @@ assignToVar op name val = do
 
 -- Currently for internal use only
 assignToBVar op name val = do
-   oldBVars <- gets hcBVars
-   let newValue = calcNewValue (oldBVars *! name) op val
-       newBVars = M.insert name newValue oldBVars
-   modify $ (\s -> s { hcBVars = newBVars })
-   return $! newValue
+   modBVar name (\oldVal -> calcNewValue oldVal op val)
+   evalBVariableRef name
 
 assignToArr op arr ref val = do
    oldArrs <- gets hcArrays
@@ -394,9 +420,36 @@ evalVariableRef s = do
        (f:_)     -> M.findWithDefault globalVal s f
        otherwise -> globalVal
 
-evalBVariableRef s = do
-     bvs <- gets hcBVars
-     return $! bvs *! s
+evalBVariableRef ARGC     = gets hcARGC    
+evalBVariableRef ARGV     = gets hcARGV    
+evalBVariableRef FILENAME = gets hcFILENAME
+evalBVariableRef FNR      = gets hcFNR     
+evalBVariableRef FS       = gets hcFS      
+evalBVariableRef NF       = gets hcNF      
+evalBVariableRef NR       = gets hcNR      
+evalBVariableRef OFMT     = gets hcOFMT    
+evalBVariableRef OFS      = gets hcOFS     
+evalBVariableRef ORS      = gets hcORS     
+evalBVariableRef RLENGTH  = gets hcRLENGTH 
+evalBVariableRef RS       = gets hcRS      
+evalBVariableRef RSTART   = gets hcRSTART  
+evalBVariableRef SUBSEP   = gets hcSUBSEP  
+
+modBVar ARGC     f = modify $ \s -> s { hcARGC    = f (hcARGC     s)}
+modBVar ARGV     f = modify $ \s -> s { hcARGV    = f (hcARGV     s)}
+modBVar FILENAME f = modify $ \s -> s { hcFILENAME= f (hcFILENAME s)}
+modBVar FNR      f = modify $ \s -> s { hcFNR     = f (hcFNR      s)}
+modBVar FS       f = modify $ \s -> s { hcFS      = f (hcFS       s)}
+modBVar NF       f = modify $ \s -> s { hcNF      = f (hcNF       s)}
+modBVar NR       f = modify $ \s -> s { hcNR      = f (hcNR       s)}
+modBVar OFMT     f = modify $ \s -> s { hcOFMT    = f (hcOFMT     s)}
+modBVar OFS      f = modify $ \s -> s { hcOFS     = f (hcOFS      s)}
+modBVar ORS      f = modify $ \s -> s { hcORS     = f (hcORS      s)}
+modBVar RLENGTH  f = modify $ \s -> s { hcRLENGTH = f (hcRLENGTH  s)}
+modBVar RS       f = modify $ \s -> s { hcRS      = f (hcRS       s)}
+modBVar RSTART   f = modify $ \s -> s { hcRSTART  = f (hcRSTART   s)}
+modBVar SUBSEP   f = modify $ \s -> s { hcSUBSEP  = f (hcSUBSEP   s)}
+
 
 evalArrRef s e = do
      idx <- liftM toString $! eval e
@@ -585,8 +638,7 @@ evalFMatch vs vr = do
      let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
          retS = VDouble $ fromIntegral $ rStart+1
          retL = VDouble $ fromIntegral $ rLength
-     assignToBVar ModSet RSTART  $ retS
-     assignToBVar ModSet RLENGTH $ retL
+     modify $ \s -> s { hcRSTART = retS, hcRLENGTH = retL }
      return $! retS
 
 evalFunCall f args = do
