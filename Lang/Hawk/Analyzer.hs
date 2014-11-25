@@ -2,11 +2,16 @@
 
 module Lang.Hawk.Analyzer where
 
+import Data.IORef
 import Data.List (find)
 import Data.Maybe (isNothing)
-import Control.Applicative (Applicative, (<*>), (<$>))
+import Control.Applicative (Applicative, (<*>), (<$>), pure)
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
+
+import Lang.Hawk.Basic
+import Lang.Hawk.Value
 
 import Lang.Hawk.AST
 
@@ -129,7 +134,7 @@ trMod (ArrayRef _ _)  = updArrs
 trMod (BuiltInVar b)  = updBVarTag b GLOBAL
 
 traceE :: Expression -> Tracer Tag
-traceE (Arith _ rhs lhs)      = cmb' (traceE lhs) (traceE rhs)
+traceE (Arith _ lhs rhs)      = cmb' (traceE lhs) (traceE rhs)
 traceE (Const _)              = return LOCAL
 traceE (FieldRef _)           = gets eFields
 traceE (VariableRef s)        = trVarRead s
@@ -183,9 +188,9 @@ procUnits s = filter p s
   where p (Section mp _) = not (mp == Just BEGIN || mp == Just END)
         p _              = False
 
-pure :: AwkSource -> Bool
-pure s =  noGlobalVars && noBVarsModified && noArrays
-       && noFunCalls   && noRangePatterns && noControlFlow
+awkPure :: AwkSource -> Bool
+awkPure s =  noGlobalVars && noBVarsModified && noArrays
+          && noFunCalls   && noRangePatterns && noControlFlow
    where 
      noGlobalVars    = isNothing $ find ((== GLOBAL) . snd) $ M.toList $ eVars  efs 
      noBVarsModified = all              ((== LOCAL)  . snd) $ M.toList $ eBVars efs
@@ -195,3 +200,80 @@ pure s =  noGlobalVars && noBVarsModified && noArrays
      noControlFlow   = not $ eFlow     efs
 
      efs = analyze $ procUnits s
+
+awkPrepare :: AwkSource -> IO AwkSource
+awkPrepare src = do
+   let efs = analyze src
+   m <- liftM M.fromList $ mapM mkRef (map fst $ M.toList $ eVars efs)
+   return $ runRewrite (mapM putRefsTL src) m
+ where mkRef s = do r <- newIORef (VDouble 0)  
+                    return (s,r)
+
+-- TODO: Integrate into Parser (AFAIR Parsec allows it)
+type VarMap = M.Map String (IORef Value)
+
+newtype Rewrite a = Rewrite (Reader VarMap a)
+                   deriving (Monad, MonadReader VarMap, Applicative, Functor)
+
+runRewrite :: Rewrite a -> (M.Map String (IORef Value)) -> a
+runRewrite (Rewrite r) v = runReader r v
+
+putRefsE :: Expression -> Rewrite Expression
+putRefsE (Arith a lhs rhs)      = Arith <$> pure a <*> putRefsE lhs <*> putRefsE rhs
+putRefsE e@(Const _)            = return e 
+putRefsE (FieldRef e)           = FieldRef <$> putRefsE e
+putRefsE (VariableRef s)        = Variable <$> asks (M.! s)
+putRefsE (ArrayRef s e)         = ArrayRef <$> pure s <*> putRefsE e
+putRefsE e@(BuiltInVar _)       = return e
+putRefsE (Assignment m p v)     = Assignment <$> pure m <*> putRefsE p <*> putRefsE v
+putRefsE (Incr p e)             = Incr <$> pure p <*> putRefsE e
+putRefsE (Decr p e)             = Decr <$> pure p <*> putRefsE e
+putRefsE (Relation r lhs rhs)   = Relation <$> pure r <*> putRefsE lhs <*> putRefsE rhs
+putRefsE (Not e)                = Not <$> putRefsE e
+putRefsE (Neg e)                = Neg <$> putRefsE e
+putRefsE (Id e)                 = Id  <$> putRefsE e
+putRefsE (In v@(VariableRef s) a) = In <$> putRefsE v <*> pure a
+putRefsE (Logic l lhs rhs)      = Logic <$> pure l <*> putRefsE lhs <*> putRefsE rhs
+putRefsE (Match lhs rhs)        = Match <$> putRefsE lhs <*> putRefsE rhs
+putRefsE (NoMatch lhs rhs)      = NoMatch <$> putRefsE lhs <*> putRefsE rhs
+putRefsE (FunCall s args)       = FunCall <$> pure s <*> mapM putRefsE args
+putRefsE (InlineIf c t f)       = InlineIf <$> putRefsE  c <*> putRefsE t <*> putRefsE f
+
+putRefsS :: Statement -> Rewrite Statement
+putRefsS (Expression e)         = Expression <$> putRefsE e
+putRefsS (Block ss)             = Block <$> mapM putRefsS ss
+putRefsS (IF e s ms)            = IF <$> putRefsE e <*> putRefsS s <*> msrefs ms
+putRefsS (WHILE e s)            = WHILE <$> putRefsE e <*> putRefsS s
+putRefsS (FOR mi mc ms s)       = FOR <$> mrefs mi <*> mrefs mc <*> mrefs ms <*> putRefsS s
+putRefsS (FOREACH e a s)        = FOREACH <$> putRefsE e <*> pure a <*> putRefsS s
+putRefsS (DO s e)               = DO <$> putRefsS s <*> putRefsE e
+putRefsS (PRINT es)             = PRINT <$> mapM putRefsE es
+putRefsS (EXIT me)              = EXIT <$> mrefs me
+putRefsS (BREAK)                = return BREAK
+putRefsS (CONT)                 = return CONT
+putRefsS (NEXT)                 = return NEXT
+putRefsS (NOP)                  = return NOP
+putRefsS (DELETE e)             = DELETE <$> putRefsE e
+putRefsS (RETURN me)            = RETURN <$> mrefs me
+
+putRefsP :: Pattern -> Rewrite Pattern
+putRefsP (EXPR e)               = EXPR <$> putRefsE e
+putRefsP (RANGE ps pe)          = RANGE <$> putRefsP ps <*> putRefsP pe
+putRefsP BEGIN                  = return BEGIN
+putRefsP END                    = return END
+putRefsP re@(RE _)              = return re
+
+putRefsTL :: TopLevel -> Rewrite TopLevel
+putRefsTL (Section mp ms)       = Section <$> mm putRefsP mp <*> mm putRefsS ms
+putRefsTL (Function s args ss)  = Function <$> pure s <*> pure args <*> putRefsS ss
+
+-- TODO: FMAP is the next step...
+mm :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
+mm  f (Just a) = f a >>= (return . Just)
+mm  f Nothing  = return Nothing
+
+mrefs :: Maybe Expression -> Rewrite (Maybe Expression)
+mrefs me = mm putRefsE me
+
+msrefs :: Maybe Statement -> Rewrite (Maybe Statement)
+msrefs ms = mm putRefsS ms

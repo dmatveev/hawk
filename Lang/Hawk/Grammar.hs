@@ -11,6 +11,7 @@ import Text.Parsec.Language
 import Text.Parsec.Expr
 
 import Lang.Hawk.AST
+import Lang.Hawk.Basic
 
 hawkBuiltinVars =
     [ ("ARGC"    ,ARGC    ) -- number of command-line arguments

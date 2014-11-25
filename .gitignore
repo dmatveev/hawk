@@ -5,3 +5,5 @@
 *.log
 *.prof
 *.txt
+*.orig
+*.rej

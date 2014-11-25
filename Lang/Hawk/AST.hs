@@ -1,37 +1,23 @@
 module Lang.Hawk.AST where
 
-data ArithOp = Add | Sub | Mul | Div | Mod | Pow
-               deriving (Eq, Show)
+import Lang.Hawk.Basic
 
-data ModOp = ModSet | ModAdd | ModSub | ModMul | ModDiv | ModMod | ModPow
-             deriving (Eq, Show)
-
-data CmpOp = CmpEQ | CmpNE | CmpGT | CmpGE | CmpLT | CmpLE
-             deriving (Eq, Show)
-
-data LogOp = AND | OR
-             deriving (Eq, Show)
-
-data BVar = ARGC | ARGV
-          | FILENAME | FNR | FS
-          | NF | NR
-          | OFMT | OFS | ORS
-          | RLENGTH | RS | RSTART
-          | SUBSEP
-            deriving (Eq, Ord, Show)
+import Data.IORef
+import Lang.Hawk.Value
 
 data Literal = LitNumeric Double
              | LitStr String
              | LitRE String
                deriving (Eq, Show)
 
-data Notation = Pre | Post
-                deriving (Eq, Show)
+instance Show (IORef a) where
+   show _ = "<ioref>"
 
 data Expression = Arith ArithOp Expression Expression
                 | Const Literal
                 | FieldRef Expression
                 | VariableRef String
+                | Variable (IORef Value) 
                 | ArrayRef String Expression
                 | BuiltInVar BVar
                 | Assignment ModOp Expression Expression

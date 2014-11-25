@@ -8,7 +8,7 @@ import qualified Data.ByteString.Char8 as B
 import Data.Fixed (mod')
 import GHC.Float (floatToDigits)
 
-import Lang.Hawk.AST
+import Lang.Hawk.Basic
 
 -- AWK runtime data type representation
 data Value = VString !B.ByteString !Double !Bool

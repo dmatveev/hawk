@@ -9,8 +9,10 @@ import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Exception.Base (evaluate)
 import Control.Monad.State.Strict
 
+import Lang.Hawk.Basic
 import Lang.Hawk.AST
 import Lang.Hawk.Interpreter
+import Lang.Hawk.Analyzer
 import Lang.Hawk.Value
 
 import Control.Concurrent
@@ -125,7 +127,9 @@ run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
     q <- newEmptyMVar
     j <- newEmptyMVar
+    src' <- awkPrepare src
+    forkIO $ putStrLn $ show src'
     forkIO $ runReaderThread reader h "\n" " " q >> return ()
-    forkFinally (worker src q) $ \_ -> putMVar j ()
+    forkFinally (worker src' q) $ \_ -> putMVar j ()
     takeMVar j
     return ()

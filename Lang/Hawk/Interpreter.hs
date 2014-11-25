@@ -6,6 +6,7 @@ import qualified Data.ByteString.Char8 as B
 
 import Text.Regex.PCRE
 
+import Data.IORef
 import Data.Fixed (mod')
 
 import Data.List (find, intercalate)
@@ -21,13 +22,14 @@ import System.Random
 import System.IO
 
 import Lang.Hawk.AST
+import Lang.Hawk.Basic
 import Lang.Hawk.Value
 import Lang.Hawk.Utils
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
                  , hcFields   :: (IM.IntMap Value)
-                 , hcVars     :: !(M.Map String Value)
+--               , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
@@ -76,7 +78,7 @@ emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcCode     = s
                  , hcFields   = IM.empty
-                 , hcVars     = M.empty
+              -- , hcVars     = M.empty
                  , hcArrays   = M.empty
                  , hcStack    = []
                  , hcRetVal   = VDouble 0
@@ -225,14 +227,15 @@ eval (Const (LitStr     s))          = return $! valstr $ B.pack s
 eval (Const (LitRE      s))          = return $! valstr $ B.pack s
 eval (Id          e)                 = eval e
 eval (FieldRef    e)                 = evalFieldRef e
-eval (VariableRef s)                 = evalVariableRef s
+-- eval (VariableRef s)                 = evalVariableRef s
+eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
 eval (BuiltInVar  s)                 = evalBVariableRef s 
 eval (ArrayRef    s e)               = evalArrRef s e
 eval (Incr n f@(FieldRef      e))    = incrField n f
-eval (Incr n v@(VariableRef s  ))    = incrVar n v
+eval (Incr n v@(Variable    ref))    = incrVar n v
 eval (Incr n a@(ArrayRef    s e))    = incrArr n a
 eval (Decr n f@(FieldRef      e))    = decrField n f
-eval (Decr n v@(VariableRef s  ))    = decrVar n v
+eval (Decr n v@(Variable    ref))    = decrVar n v
 eval (Decr n a@(ArrayRef    s e))    = decrArr n a
 eval (Relation op le re)             = evalCmp op le re
 eval (Not e)                         = evalNot e 
@@ -304,29 +307,33 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
-assignToVar op name val = do
-     -- As the lookup, variable assignment is also special.
-     -- At first, we try to update variable in the current scope (if any),
-     -- then we refer to the global scope.
-     oldVars  <- gets hcVars
-     oldStack <- gets hcStack
-     case oldStack of
-       (f:_) -> case name `M.lookup` f of
-                  Nothing  -> updGlobal oldVars
-                  (Just v) -> updStack oldStack
-       []    -> updGlobal oldVars
-  where
-     updGlobal oldVars = do
-       let newValue = calcNewValue (oldVars *! name) op val
-           newVars  = M.insert name newValue oldVars
-       modify (\s -> s { hcVars = newVars })
-       return $! newValue
+assignToRef op ref val = do
+     r <- liftIO $ atomicModifyIORef' ref (\v -> let nv = calcNewValue v op val in (nv, nv))
+     return $! r
 
-     updStack (f:fs) = do
-       let newValue = calcNewValue (f *! name) op val
-           newVars  = M.insert name newValue f
-       modify (\s -> s { hcStack = newVars:fs })
-       return $! newValue
+-- assignToVar op name val = do
+--      -- As the lookup, variable assignment is also special.
+--      -- At first, we try to update variable in the current scope (if any),
+--      -- then we refer to the global scope.
+--      oldVars  <- gets hcVars
+--      oldStack <- gets hcStack
+--      case oldStack of
+--        (f:_) -> case name `M.lookup` f of
+--                   Nothing  -> updGlobal oldVars
+--                   (Just v) -> updStack oldStack
+--        []    -> updGlobal oldVars
+--   where
+--      updGlobal oldVars = do
+--        let newValue = calcNewValue (oldVars *! name) op val
+--            newVars  = M.insert name newValue oldVars
+--        modify (\s -> s { hcVars = newVars })
+--        return $! newValue
+
+--      updStack (f:fs) = do
+--        let newValue = calcNewValue (f *! name) op val
+--            newVars  = M.insert name newValue f
+--        modify (\s -> s { hcStack = newVars:fs })
+--        return $! newValue
 
 -- Currently for internal use only
 assignToBVar op name val = do
@@ -347,6 +354,10 @@ ppval :: Double -> Double -> Notation -> Value
 ppval old new Post = VDouble old
 ppval old new Pre  = VDouble new
 
+ppval' old new Post =  old
+ppval' old new Pre  =  new
+
+
 incrField n fld@(FieldRef e) = do
    (VDouble d) <- assignToField ModAdd e (VDouble 1.0)
    return $! ppval (d-1) d n
@@ -355,12 +366,12 @@ decrField n fld@(FieldRef e) = do
    (VDouble d) <- assignToField ModSub e (VDouble 1.0)
    return $! ppval (d+1) d n
 
-incrVar n var@(VariableRef s) = do
-   (VDouble d) <- assignToVar ModAdd s (VDouble 1.0)
+incrVar n var@(Variable s) = do
+   (VDouble d) <- assignToRef ModAdd s (VDouble 1.0)
    return $! ppval (d-1) d n
 
-decrVar n var@(VariableRef s) = do
-   (VDouble d) <- assignToVar ModSub s (VDouble 1.0)
+decrVar n var@(Variable s) = do
+   (VDouble d) <- assignToRef ModSub s (VDouble 1.0)
    return $! ppval (d+1) d n
 
 incrArr n arr@(ArrayRef name ref) = do
@@ -379,7 +390,7 @@ exec k (IF c t me)    = {-# SCC "execIF"    #-} execIF k c t me
 exec k w@(WHILE c s)  = {-# SCC "execWHILE" #-} execWHILE k w c s 
 exec k (FOR i c st s) = {-# SCC "execFOR"   #-} execFOR k i c st s
 exec k d@(DO s c)     = {-# SCC "execDO"    #-} execDO k d s c 
-exec k f@(FOREACH v@(VariableRef vname) arr st) = {-# SCC "execFE" #-} execFOREACH k f v vname arr st
+exec k f@(FOREACH v@(Variable ref) arr st) = {-# SCC "execFE" #-} execFOREACH k f v ref arr st
 exec _ (PRINT es)     = {-# SCC "execPRINT" #-} execPRINT es
 exec k (BREAK)        = {-# SCC "execBREAK" #-} (kBreak k) ()
 exec k (CONT)         = {-# SCC "execCONT"  #-} (kCont  k) ()
@@ -408,17 +419,17 @@ evalFieldRef e = do
      else do fs <- gets hcFields
              return $! fs IM.! i
 
-evalVariableRef s = do
-     -- Variable lookup is special, since we may have an hierarchy
-     -- of scopes with its personal variables (in function calls).
-     -- So it first we do lookup in stack top, and then in the global
-     -- dictionary.
-     st <- gets hcStack
-     vs <- gets hcVars
-     let globalVal = vs *! s
-     return $! case st of
-       (f:_)     -> M.findWithDefault globalVal s f
-       otherwise -> globalVal
+-- evalVariableRef s = do
+--      -- Variable lookup is special, since we may have an hierarchy
+--      -- of scopes with its personal variables (in function calls).
+--      -- So it first we do lookup in stack top, and then in the global
+--      -- dictionary.
+--      st <- gets hcStack
+--      vs <- gets hcVars
+--      let globalVal = vs *! s
+--      return $! case st of
+--        (f:_)     -> M.findWithDefault globalVal s f
+--        otherwise -> globalVal
 
 evalBVariableRef ARGC     = gets hcARGC    
 evalBVariableRef ARGV     = gets hcARGV    
@@ -601,7 +612,7 @@ evalGSubVar vr vs vt = do
          strings = map (\(s,l) -> B.take l (B.drop s t)) regions
          result  = valstr $ B.intercalate s strings
      case vt of
-        (VariableRef s)    -> assignToVar   ModSet s   result
+        (Variable ref)     -> assignToRef   ModSet ref result
         (FieldRef ref)     -> assignToField ModSet ref result
         (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
      return $! VDouble $ fromIntegral $ length matches
@@ -627,7 +638,7 @@ evalSubVar vr vs vt = do
           (offset, len) -> do
              let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
              case vt of
-                (VariableRef s)    -> assignToVar   ModSet s   result
+                (Variable ref)     -> assignToRef   ModSet ref result
                 (FieldRef ref)     -> assignToField ModSet ref result
                 (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
              return $! VDouble 1
@@ -676,7 +687,8 @@ evalAssign op p v = do
      val <- eval v
      case p of
        (FieldRef ref)     -> assignToField op ref  val
-       (VariableRef name) -> assignToVar   op name val
+--     (VariableRef name) -> assignToVar   op name val
+       (Variable ref)     -> assignToRef   op ref val
        (ArrayRef arr ref) -> assignToArr   op arr ref val
        (BuiltInVar name)  -> assignToBVar  op name val
        otherwise -> fail "Only to-field and to-variable assignments are supported"
@@ -726,7 +738,7 @@ execFOREACH k f v vname arr st = do
        let k' = k {kBreak = br}
            nextFor kk []         = br ()
            nextFor kk ((_,s):ss) = do
-             assignToVar ModSet vname (valstr $ B.pack s)
+             assignToRef ModSet vname (valstr $ B.pack s)
              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
              seq kk' $ exec kk' st
              nextFor kk' ss
