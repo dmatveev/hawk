@@ -29,7 +29,7 @@ runTrace progFile = do
      (Left e)  -> putStrLn $ show e
      (Right a) -> do src <- awkPrepare a
                      let bc = runCompiler (mapM_ compileTL src) csInitial
-                     forM_ (zip [1::Int,2..] (toList bc)) $ \(i, c) -> do
+                     forM_ (zip [0::Int,1..] (toList bc)) $ \(i, c) -> do
                         printf "%4d  %s\n" i (show c)
 
 main :: IO ()

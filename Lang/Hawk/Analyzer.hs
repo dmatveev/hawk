@@ -88,7 +88,8 @@ runTracer :: Tracer a -> Effects -> Effects
 runTracer (Tracer s) e = execState s e
 
 mtry :: (Monad m) => (a -> m b) -> Maybe a -> m ()
-mtry f ma = maybe r (\a -> f a >> r) ma where r = return ()
+mtry _ Nothing  = return ()
+mtry f (Just a) = f a >> return ()
 
 cmb' :: Tracer Tag -> Tracer Tag -> Tracer Tag
 cmb' p v = cmb <$> gets eDepth <*> p <*> v 
@@ -120,7 +121,10 @@ trVarRead s = do
 bvarTag :: BVar -> Tracer Tag
 bvarTag b = gets (M.findWithDefault LOCAL b . eBVars)
 
-trBlock f = get >>= \s -> put s {eDepth = succ (eDepth s)} >> f >> put s
+trBlock f = do current <- gets eDepth
+               modify $ \s -> s { eDepth = succ current }
+               f
+               modify $ \s -> s { eDepth = current }
 
 trAsgn ModSet (VariableRef s) rhs = traceE rhs >>= updVarTag s
 trAsgn _      (VariableRef s) rhs = cmb' (varTag s) (traceE rhs) >>= updVarTag s

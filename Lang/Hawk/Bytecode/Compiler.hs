@@ -2,6 +2,7 @@
 
 module Lang.Hawk.Bytecode.Compiler where
 
+import qualified Data.ByteString.Char8 as B
 import qualified Data.Sequence as D
 import Data.Sequence ((|>))
 import Control.Monad.State.Strict
@@ -25,18 +26,31 @@ runCompiler (Compiler c) b = csBC $ execState c b
 op :: OpCode -> Compiler ()
 op c = modify $ \s -> s {csBC = (csBC s) |> c, csCur = succ (csCur s)}
 
-jf :: Compiler () -> Compiler ()
-jf c = do
+mkJF :: Compiler Int
+mkJF = do
    i <- gets csCur
-   op (JF 0) >> c
+   op $ JF 0
+   return i
+
+putJF :: Int -> Compiler ()
+putJF i = do
    e <- gets csCur
    modify $ \s -> s {csBC = D.update i (JF e) (csBC s)}
+
+jf :: Compiler () -> Compiler ()
+jf c = do
+   i <- mkJF
+   c
+   putJF i
 
 drp :: Compiler () -> Compiler ()
 drp c = c >> op DRP
 
 toValue :: Literal -> Value
-toValue = undefined
+toValue (LitNumeric i) = VDouble i
+toValue (LitStr     s) = valstr $ B.pack s
+toValue (LitRE      s) = valstr $ B.pack s
+
 
 compileE :: Expression -> Compiler ()
 compileE (Arith a l r)      = compileE l >> compileE r >> op (ARITH a)
@@ -80,19 +94,44 @@ compileDECT Post (Variable r) = do
    op $ MVAR ModSub r
 
 compileS :: Statement -> Compiler ()
-compileS (Expression e) = compileE e
-compileS (Block ss)     = drp $ mapM_ compileS ss
-compileS (IF t th el)   = compileIF t th el
-compileS (PRINT es)     = mapM_ compileE es >> op (PRN (length es))
-
-compileP :: Pattern -> Compiler ()
-compileP (EXPR e) = compileE e
-compileP _        = op $ PUSH (VDouble 1)
+compileS (Expression e)    = compileE e
+compileS (Block ss)        = drp $ mapM_ compileS ss
+compileS (IF t th el)      = compileIF t th el
+compileS (WHILE e s)       = compileWHILE e s
+compileS (FOR mi mc ms st) = compileFOR mi mc ms st
+compileS (DO s e)          = compileDO s e
+compileS (PRINT es)        = mapM_ compileE es >> op (PRN (length es))
 
 compileIF t th el = do
    compileE t
    jf $ compileS th
    maybe (return ()) compileS el
+
+compileWHILE e s = do
+   enter <- gets csCur
+   compileE e
+   leave <- mkJF
+   compileS s
+   op $ JMP enter
+   putJF leave
+
+compileFOR mi mc ms st = do
+   maybe (return ()) compileE mi
+   enter <- gets csCur
+   maybe (return ()) compileE mc
+   leave <- mkJF
+   compileS st
+   maybe (return ()) compileE ms
+   op $ JMP enter
+   putJF leave
+
+compileDO s e = do
+   enter <- gets csCur
+   compileS s
+   compileE e
+   leave <- mkJF
+   op $ JMP enter
+   putJF leave
 
 compileTL :: TopLevel -> Compiler ()
 compileTL (Section mp ms) = compileSection mp ms
@@ -103,4 +142,3 @@ compileSection mp ms = do
      (Just (EXPR e)) -> do compileE e
                            jf $ compileStmt ms
   where compileStmt = maybe (op $ PRN 0) compileS
-

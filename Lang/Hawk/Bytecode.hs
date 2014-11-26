@@ -24,6 +24,7 @@ data OpCode = ARITH ArithOp
             | VSET (IORef Value)
             | DUP
             | PRN Int
+            | JMP Int
             | JF Int
             | DRP
             deriving (Show)

@@ -2,6 +2,8 @@ module Lang.Hawk.Bytecode.Interpreter where
 
 import Data.IORef
 
+import Control.Exception
+
 import Control.Monad.State.Strict
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
@@ -89,5 +91,7 @@ execBC ((JF n):r) = do (top:st) <- gets hcSTACK
                        if (toBool top)
                        then execBC r
                        else gets hcOPCODES >>= \src -> execBC (drop n src)
-execBC (op:ops)   = do -- liftIO $ putStrLn (show op)
-                       bc op >> execBC ops 
+execBC ((JMP n):r) = gets hcOPCODES >>= \src -> execBC (drop n src)
+execBC (op:ops)   = do -- liftIO $ putStr $ (show op)
+                       bc op
+                       execBC ops 
