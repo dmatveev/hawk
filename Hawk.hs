@@ -1,13 +1,18 @@
+import qualified Data.Sequence as D
+import Data.Foldable (toList)
 import Control.Exception
 import Control.Monad (forM_)
 import Control.Monad.Trans
 import System.IO
 import System.Environment (getArgs)
 import Text.Parsec (parse)
+import Text.Printf
 
 import Lang.Hawk.Grammar (awk)
 import Lang.Hawk.Analyzer
 import Lang.Hawk.Scheduler
+
+import Lang.Hawk.Bytecode.Compiler
 
 runHawk :: String -> String -> IO ()
 runHawk progFile inputFile = do
@@ -22,9 +27,11 @@ runTrace progFile = do
   source <- readFile progFile
   case parse awk progFile source of
      (Left e)  -> putStrLn $ show e
-     (Right a) -> do putStrLn $ show (analyze $ procUnits a)
-                     putStrLn $ "The code is " ++ (if awkPure a then "PURE" else "WITH EFFECTS")
- 
+     (Right a) -> do src <- awkPrepare a
+                     let bc = runCompiler (mapM_ compileTL src) csInitial
+                     forM_ (zip [1::Int,2..] (toList bc)) $ \(i, c) -> do
+                        printf "%4d  %s\n" i (show c)
+
 main :: IO ()
 main = do
   args <- getArgs

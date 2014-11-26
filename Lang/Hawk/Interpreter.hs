@@ -11,6 +11,7 @@ import Data.Fixed (mod')
 
 import Data.List (find, intercalate)
 import Data.Maybe (fromJust)
+import qualified Data.Foldable as F 
 
 import Control.Monad.State.Strict
 import Control.Monad.Cont
@@ -25,6 +26,9 @@ import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 import Lang.Hawk.Utils
+import Lang.Hawk.Bytecode
+import Lang.Hawk.Bytecode.Compiler
+import Lang.Hawk.Analyzer
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
@@ -35,6 +39,9 @@ data HawkContext = HawkContext
                  , hcRetVal   :: !Value
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
+
+                 , hcSTACK    :: [Value]
+                 , hcOPCODES  :: ![OpCode]
 
                  , hcARGC     :: !Value
                  , hcARGV     :: !Value
@@ -85,6 +92,9 @@ emptyContext s = HawkContext
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 
+                 , hcSTACK    = []
+                 , hcOPCODES  = opcodes
+
                  , hcARGC     = defstr ""
                  , hcARGV     = defstr ""
                  , hcFILENAME = defstr "" 
@@ -108,6 +118,7 @@ emptyContext s = HawkContext
                              , (ORS, defstr "\n")
                              , (RS,  defstr "\n")
                              ]
+        opcodes = F.toList $ runCompiler (mapM compileTL $ procUnits s) csInitial
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
                         deriving (Monad, MonadIO, MonadCont, MonadState HawkContext)

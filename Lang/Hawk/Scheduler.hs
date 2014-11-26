@@ -14,7 +14,7 @@ import Lang.Hawk.AST
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Analyzer
 import Lang.Hawk.Value
-
+import Lang.Hawk.Bytecode.Interpreter
 import Control.Concurrent
 
 import System.IO
@@ -116,19 +116,21 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
                        , hcNR       = VDouble (succ $ toDouble $ hcNR s)
                        , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
                        }
-      -- find matching actions for this line and execute them
-      actions <- (gets hcCode >>= filterM matches)
-      forM_ actions $ \(Section _ ms) -> exec (emptyKBlock) $
-         case ms of
-           Nothing  -> (PRINT [])
-           (Just s) -> s
+
+      
+      -- -- find matching actions for this line and execute them
+      -- actions <- (gets hcCode >>= filterM matches)
+      -- forM_ actions $ \(Section _ ms) -> exec (emptyKBlock) $
+      --    case ms of
+      --      Nothing  -> (PRINT [])
+      --      (Just s) -> s
+      gets hcOPCODES >>= execBC
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
     q <- newEmptyMVar
     j <- newEmptyMVar
     src' <- awkPrepare src
-    forkIO $ putStrLn $ show src'
     forkIO $ runReaderThread reader h "\n" " " q >> return ()
     forkFinally (worker src' q) $ \_ -> putMVar j ()
     takeMVar j
