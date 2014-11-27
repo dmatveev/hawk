@@ -15,6 +15,8 @@ import Lang.Hawk.Interpreter
 import Lang.Hawk.Analyzer
 import Lang.Hawk.Value
 import Lang.Hawk.Bytecode.Interpreter
+import Lang.Hawk.Runtime
+
 import Control.Concurrent
 
 import System.IO

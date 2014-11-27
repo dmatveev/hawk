@@ -13,6 +13,7 @@ import Data.List (find, intercalate)
 import Data.Maybe (fromJust)
 import qualified Data.Foldable as F 
 
+import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
 import Control.Monad.Cont
 import Control.Monad.Trans
@@ -25,15 +26,14 @@ import System.IO
 import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
-import Lang.Hawk.Utils
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Bytecode.Compiler
 import Lang.Hawk.Analyzer
+import Lang.Hawk.Runtime
 
 data HawkContext = HawkContext
                  { hcCode     :: !AwkSource
                  , hcFields   :: (IM.IntMap Value)
---               , hcVars     :: !(M.Map String Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
@@ -85,7 +85,6 @@ emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcCode     = s
                  , hcFields   = IM.empty
-              -- , hcVars     = M.empty
                  , hcArrays   = M.empty
                  , hcStack    = []
                  , hcRetVal   = VDouble 0
@@ -113,7 +112,8 @@ emptyContext s = HawkContext
   where opcodes = F.toList $ runCompiler (mapM compileTL $ procUnits s) csInitial
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
-                        deriving (Monad, MonadIO, MonadCont, MonadState HawkContext)
+                        deriving (Monad, MonadIO, MonadCont, MonadState HawkContext,
+                                  Applicative, Functor)
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
@@ -173,51 +173,44 @@ finalize = do
 
 -- processLine takes a new (next) line from input stream, prepares
 -- the execution context, and evaluates the awk code with this context.
-processLine :: KBlock -> B.ByteString -> Interpreter ()
-processLine k s = do
-    oldContext <- get
-    thisFields <- liftM (map valstr) $ splitIntoFields s
-    let thisFldMap = IM.fromList (zip [1,2..] thisFields)
-        thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
-    put $! thisContext
-    modify $ \s -> s { hcNF  = VDouble (fromIntegral $ length thisFields)
-                     , hcNR  = VDouble (succ $ toDouble $ hcNR s)
-                     , hcFNR = VDouble (succ $ toDouble $ hcNR s)
-                     }
-    -- find matching actions for this line and execute them
-    actions <- (gets hcCode >>= filterM matches)
-    forM_ actions $ \(Section _ ms) -> exec k $
-       case ms of
-         Nothing  -> (PRINT [])
-         (Just s) -> s
+-- processLine :: KBlock -> B.ByteString -> Interpreter ()
+-- processLine k s = do
+--     oldContext <- get
+--     thisFields <- liftM (map valstr) $ splitIntoFields s
+--     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
+--         thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
+--     put $! thisContext
+--     modify $ \s -> s { hcNF  = VDouble (fromIntegral $ length thisFields)
+--                      , hcNR  = VDouble (succ $ toDouble $ hcNR s)
+--                      , hcFNR = VDouble (succ $ toDouble $ hcNR s)
+--                      }
+--     -- find matching actions for this line and execute them
+--     actions <- (gets hcCode >>= filterM matches)
+--     forM_ actions $ \(Section _ ms) -> exec k $
+--        case ms of
+--          Nothing  -> (PRINT [])
+--          (Just s) -> s
 
-splitIntoFields' :: B.ByteString -> B.ByteString -> [B.ByteString]
-splitIntoFields' fs str
-    | fs == " " = B.words str                        -- Handles ' ' and '\t'
-    | B.null fs = map B.singleton (B.unpack str)     -- Every character is a field
-    | otherwise = let ms = getAllMatches (str =~ fs) -- Regular expression
-                      rs = invRegions ms (B.length str)
-                  in map (\(s,l) -> B.take l (B.drop s str)) rs
 
-splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
-splitIntoFields str = do
-   fs <- liftM toString $ eval (BuiltInVar FS)
-   return $ splitIntoFields' fs str
+-- splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
+-- splitIntoFields str = do
+--    fs <- liftM toString $ eval (BuiltInVar FS)
+--    return $ splitIntoFields' fs str
 
 -- Checks if the given top-level form matches the current line
-matches :: TopLevel -> Interpreter Bool
-matches (Function _ _ _)     = return False
-matches (Section Nothing  _) = return True
-matches (Section (Just p) _) = patternMatches p
+-- matches :: TopLevel -> Interpreter Bool
+-- matches (Function _ _ _)     = return False
+-- matches (Section Nothing  _) = return True
+-- matches (Section (Just p) _) = patternMatches p
 
 
--- Checks if the given pattern matches the current line
-patternMatches :: Pattern -> Interpreter Bool
-patternMatches BEGIN    = return False
-patternMatches END      = return False
-patternMatches (EXPR e) = liftM toBool $! eval e
-patternMatches (RE s)   = gets hcThisLine >>= \l -> return $! l =~ s
-patternMatches _        = return False -- Not supported yet
+-- -- Checks if the given pattern matches the current line
+-- patternMatches :: Pattern -> Interpreter Bool
+-- patternMatches BEGIN    = return False
+-- patternMatches END      = return False
+-- patternMatches (EXPR e) = liftM toBool $! eval e
+-- patternMatches (RE s)   = gets hcThisLine >>= \l -> return $! l =~ s
+-- patternMatches _        = return False -- Not supported yet
 
 unsup s = fail $ s ++ " are not yet supported"
 
@@ -295,6 +288,9 @@ assignToField op ref val = do
           modify (\s -> s { hcFields = newFields })
           reconstructThisLine
           return $! newValue
+
+splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
+splitIntoFields str = splitIntoFields' <$> (liftM toString $ gets hcFS) <*> pure str 
 
 reconstructThisLine = do
      thisFields <- gets (IM.toList . hcFields)
@@ -404,16 +400,7 @@ exec _ (NOP)          = {-# SCC "execNOP"   #-} return ()
 exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
 
-evalArith op le re = do
-     l <- liftM toDouble $! eval le
-     r <- liftM toDouble $! eval re
-     case op of
-          Mul -> return $! VDouble (l * r)
-          Div -> return $! VDouble (l / r)
-          Add -> return $! VDouble (l + r)
-          Sub -> return $! VDouble (l - r)
-          Mod -> return $! VDouble (mod' l r)
-          Pow -> return $! VDouble (l ** r)
+evalArith op le re = calcArith <$> eval le <*> eval re <*> pure op
 
 evalFieldRef e = do
      i <- liftM toInt $ eval e
@@ -470,25 +457,7 @@ evalArrRef s e = do
      ars <- gets hcArrays
      return $! ars *! (s, B.unpack idx)
 
-evalCmp op le re = do
-     l <- eval le
-     r <- eval re
-     return $! VDouble $ test $ case (l, r) of
-         (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
-            -- If the both strings represent numbers completely
-           if sParsed && rParsed then cmp op lNum rNum else cmp op lStr rStr
-         (VString _ lNum _, VDouble   rNum  ) -> cmp op lNum rNum
-         (VDouble   lNum  , VString _ rNum _) -> cmp op lNum rNum
-         (VDouble   lNum  , VDouble   rNum  ) -> cmp op lNum rNum
-  where
-    cmp op l r = case op of
-       CmpEQ -> l == r
-       CmpNE -> l /= r
-       CmpGT -> l >  r
-       CmpGE -> l >= r
-       CmpLT -> l <  r
-       CmpLE -> l <= r
-    test b = if b then 1 else 0
+evalCmp op le re = cmpValues <$> eval le <*> eval re <*> pure op
 
 evalNot e = do
      b <- liftM toBool $! eval e
@@ -527,10 +496,9 @@ evalNoMatch s re = do
      let rv = if r /= "" && l =~ r then 0.0 else 1.0
      return $! VDouble rv
      
-evalAtan2 vx vy = do
-     y <- liftM toDouble $! eval vy
-     x <- liftM toDouble $! eval vx
-     return $! VDouble $ atan2 y x
+evalAtan2  vx vy = calcAtan2  <$> eval vy <*> eval vx
+evalIndex  vs vt = calcIndex  <$> eval vs <*> eval vt
+evalLength vs    = calcLength <$> eval vs
 
 evalSRand vss = do
      g <- case vss of
@@ -544,18 +512,6 @@ evalRand = do
      let (r, g') = randomR (0.0, 1.0) g
      modify $ (\s -> s { hcStdGen = g' })
      return $! VDouble r
-
-evalIndex vs vt = do
-     s <- liftM toString $! eval vs
-     t <- liftM toString $! eval vt
-     let (x, y) = B.breakSubstring t s
-     return $! if B.null y
-               then VDouble 0
-               else VDouble $ fromIntegral $ 1 + B.length x
-
-evalLength vs = do
-     s <- liftM toString $! eval vs
-     return $! VDouble $ fromIntegral $ B.length s
 
 evalSplitFS vs a = do
      fs <- liftM toString $ eval (BuiltInVar FS)
@@ -583,63 +539,37 @@ evalSplit vs fs arr = do
    modify $ (\s -> s { hcArrays = ars'' })
    return $! VDouble $ fromIntegral $ length ss
 
-evalSubstr vs vp = do
-     s <- liftM toString    $ eval vs
-     p <- liftM toInt $ eval vp
-     return $! valstr $ B.drop (p-1) s
-
-evalSubstr2 vs vp vn = do
-     s <- liftM toString    $ eval vs
-     p <- liftM toInt $ eval vp
-     n <- liftM toInt $ eval vn
-     return $! valstr $ B.take n $ B.drop (p-1) s
+evalSubstr  vs vp = calcSubstr <$> eval vs <*> eval vp
+evalSubstr2 vs vp vn = calcSubstr2 <$> eval vs <*> eval vp <*> eval vn
 
 evalGSub vr vs = do
-     thisLine <- gets hcThisLine
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     let matches = getAllMatches (thisLine =~ r) :: [(MatchOffset, MatchLength)]
-         regions = invRegions matches (B.length thisLine)
-         strings = map (\(s,l) -> B.take l (B.drop s thisLine)) regions
-         result  = B.intercalate s strings
-     modify (\s -> s { hcThisLine = result })
-     reconstructThisFields result
-     return $! VDouble $ fromIntegral $ length matches
+     (m, str) <- calcGSub <$> eval vr <*> eval vs <*> gets hcThisLine
+     modify $ \s -> s { hcThisLine = str }
+     reconstructThisFields str
+     return $! VDouble $ fromIntegral m
 
 evalGSubVar vr vs vt = do
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     t <- liftM toString $ eval vt
-     let matches = getAllMatches (t =~ r) :: [(MatchOffset, MatchLength)]
-         regions = invRegions matches (B.length t)
-         strings = map (\(s,l) -> B.take l (B.drop s t)) regions
-         result  = valstr $ B.intercalate s strings
+     (m, str) <- calcGSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
+     let vstr = valstr str
      case vt of
-        (Variable ref)     -> assignToRef   ModSet ref result
-        (FieldRef ref)     -> assignToField ModSet ref result
-        (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
-     return $! VDouble $ fromIntegral $ length matches
+        (Variable ref)     -> assignToRef   ModSet ref vstr
+        (FieldRef ref)     -> assignToField ModSet ref vstr
+        (ArrayRef arr ref) -> assignToArr   ModSet arr ref vstr 
+     return $! VDouble $ fromIntegral m
 
 evalSub vr vs = do
-     thisLine <- gets hcThisLine
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     case (thisLine =~ r) of
-          (-1, _)       -> return $! VDouble 0
-          (offset, len) -> do
-             let result = B.concat [B.take offset thisLine, s, B.drop (offset+len) thisLine]
-             modify (\s -> s { hcThisLine = result })
-             reconstructThisFields result
+     (n, str) <- calcSub <$> eval vr <*> eval vs <*> gets hcThisLine
+     if n == 0
+     then do return $! VDouble 0
+     else do modify (\s -> s { hcThisLine = str })
+             reconstructThisFields str
              return $! VDouble 1
 
 evalSubVar vr vs vt = do
-     r <- liftM toString $ eval vr
-     s <- liftM toString $ eval vs
-     t <- liftM toString $ eval vt
-     case (t =~ r) of
-          (-1, _)       -> return $! VDouble 0
-          (offset, len) -> do
-             let result = valstr $ B.concat [B.take offset t, s, B.drop (offset+len) t]
+     (n, str) <- calcSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
+     if n == 0
+     then do return $! VDouble 0
+     else do let result = valstr str
              case vt of
                 (Variable ref)     -> assignToRef   ModSet ref result
                 (FieldRef ref)     -> assignToField ModSet ref result
@@ -647,11 +577,7 @@ evalSubVar vr vs vt = do
              return $! VDouble 1
 
 evalFMatch vs vr = do
-     s <- liftM toString $ eval vs
-     r <- liftM toString $ eval vr
-     let (rStart, rLength) = (s =~ r) :: (MatchOffset, MatchLength)
-         retS = VDouble $ fromIntegral $ rStart+1
-         retL = VDouble $ fromIntegral $ rLength
+     (retS, retL) <- calcMatch <$> eval vs <*> eval vr
      modify $ \s -> s { hcRSTART = retS, hcRLENGTH = retL }
      return $! retS
 

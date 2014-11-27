@@ -5,7 +5,6 @@ module Lang.Hawk.Value where
 import Control.Applicative ((<*))
 import qualified Data.Attoparsec.ByteString.Char8 as AP
 import qualified Data.ByteString.Char8 as B
-import Data.Fixed (mod')
 import GHC.Float (floatToDigits)
 
 import Lang.Hawk.Basic
@@ -53,12 +52,3 @@ toString (VDouble d) =
   where (rs,p) = floatToDigits 10 (abs d)
         nrs = length rs
         sgn = if d >= 0 then "" else "-"
-
-calcNewValue oldVal op arg =
-     seq oldVal $! case op of
-        ModSet  -> arg
-        ModAdd -> VDouble $ toDouble oldVal + toDouble arg
-        ModSub -> VDouble $ toDouble oldVal - toDouble arg
-        ModMul -> VDouble $ toDouble oldVal * toDouble arg
-        ModDiv -> VDouble $ toDouble oldVal / toDouble arg
-        ModMod -> VDouble $ toDouble oldVal `mod'` toDouble arg
