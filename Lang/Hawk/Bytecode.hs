@@ -10,10 +10,14 @@ data OpCode = ARITH ArithOp
             | PUSH Value
             | POP
             | FIELD
+            | FSET
             | VAR (IORef Value)
             | MVAR ModOp (IORef Value)
+            | VSET (IORef Value)
             | ARR String
+            | ASET String
             | BVAR BVar
+            | BSET BVar
             | CMP CmpOp
             | NOT
             | NEG
@@ -21,7 +25,7 @@ data OpCode = ARITH ArithOp
             | MATCH
             | NOMATCH
             | CALL String
-            | VSET (IORef Value)
+
             | DUP
             | PRN Int
             | JMP Int

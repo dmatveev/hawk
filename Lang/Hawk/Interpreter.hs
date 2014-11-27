@@ -135,10 +135,10 @@ eval (FieldRef    e)                 = evalFieldRef e
 eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
 eval (BuiltInVar  s)                 = evalBVariableRef s 
 eval (ArrayRef    s e)               = evalArrRef s e
-eval (Incr n f@(FieldRef      e))    = incrField n f
+eval (Incr n f@(FieldRef      e))    = undefined -- incrField n f
 eval (Incr n v@(Variable    ref))    = incrVar n v
 eval (Incr n a@(ArrayRef    s e))    = incrArr n a
-eval (Decr n f@(FieldRef      e))    = decrField n f
+eval (Decr n f@(FieldRef      e))    = undefined -- decrField n f
 eval (Decr n v@(Variable    ref))    = decrVar n v
 eval (Decr n a@(ArrayRef    s e))    = decrArr n a
 eval (Relation op le re)             = evalCmp op le re
@@ -178,8 +178,9 @@ proxyFcn f e = do
      d <- liftM toDouble $ eval e
      return $! VDouble $ f d
 
-assignToField op ref val = do
-     i <- liftM toInt $! eval ref
+assignToField :: ModOp -> Value -> Value -> Interpreter ()
+assignToField op vi val = do
+     let i = toInt vi
      if i == 0
      then do
           thisLine <- gets hcThisLine
@@ -187,18 +188,17 @@ assignToField op ref val = do
               newLineStr = toString newLine
           modify (\s -> s {hcThisLine = newLineStr})
           reconstructThisFields newLineStr
-          return $! newLine
      else do
           oldFields <- gets hcFields
           let newValue  = calcNewValue (oldFields *!! i) op val
               newFields = IM.insert i newValue oldFields
           modify (\s -> s { hcFields = newFields })
           reconstructThisLine
-          return $! newValue
 
 splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
 splitIntoFields str = splitIntoFields' <$> (liftM toString $ gets hcFS) <*> pure str 
 
+reconstructThisLine :: Interpreter ()
 reconstructThisLine = do
      thisFields <- gets (IM.toList . hcFields)
      ofs        <- liftM toString $ eval (BuiltInVar OFS)
@@ -206,6 +206,7 @@ reconstructThisLine = do
      modify (\s -> s { hcThisLine = line })
      return ()
 
+reconstructThisFields :: B.ByteString -> Interpreter ()
 reconstructThisFields l = do
     oldContext <- get
     thisFields <- liftM (map valstr) $ splitIntoFields l
@@ -213,10 +214,12 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
+-- TODO: delete
 assignToRef op ref val = do
      r <- liftIO $ atomicModifyIORef' ref (\v -> let nv = calcNewValue v op val in (nv, nv))
      return $! r
 
+-- TODO: remove
 assignToBVar op name val = do
    modBVar name (\oldVal -> calcNewValue oldVal op val)
    evalBVariableRef name
@@ -239,13 +242,13 @@ ppval' old new Post =  old
 ppval' old new Pre  =  new
 
 
-incrField n fld@(FieldRef e) = do
-   (VDouble d) <- assignToField ModAdd e (VDouble 1.0)
-   return $! ppval (d-1) d n
+-- incrField n fld@(FieldRef e) = do
+--    (VDouble d) <- assignToField ModAdd e (VDouble 1.0)
+--    return $! ppval (d-1) d n
 
-decrField n fld@(FieldRef e) = do
-   (VDouble d) <- assignToField ModSub e (VDouble 1.0)
-   return $! ppval (d+1) d n
+-- decrField n fld@(FieldRef e) = do
+--    (VDouble d) <- assignToField ModSub e (VDouble 1.0)
+--    return $! ppval (d+1) d n
 
 incrVar n var@(Variable s) = do
    (VDouble d) <- assignToRef ModAdd s (VDouble 1.0)
@@ -423,7 +426,7 @@ evalGSubVar vr vs vt = do
      let vstr = valstr str
      case vt of
         (Variable ref)     -> assignToRef   ModSet ref vstr
-        (FieldRef ref)     -> assignToField ModSet ref vstr
+        (FieldRef ref)     -> undefined -- assignToField ModSet ref vstr
         (ArrayRef arr ref) -> assignToArr   ModSet arr ref vstr 
      return $! VDouble $ fromIntegral m
 
@@ -442,7 +445,7 @@ evalSubVar vr vs vt = do
      else do let result = valstr str
              case vt of
                 (Variable ref)     -> assignToRef   ModSet ref result
-                (FieldRef ref)     -> assignToField ModSet ref result
+                (FieldRef ref)     -> undefined -- assignToField ModSet ref result
                 (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
              return $! VDouble 1
 
@@ -485,7 +488,7 @@ evalFMatch vs vr = do
 evalAssign op p v = do
      val <- eval v
      case p of
-       (FieldRef ref)     -> assignToField op ref  val
+       (FieldRef ref)     -> undefined -- assignToField op ref  val
        (Variable ref)     -> assignToRef   op ref val
        (ArrayRef arr ref) -> assignToArr   op arr ref val
        (BuiltInVar name)  -> assignToBVar  op name val

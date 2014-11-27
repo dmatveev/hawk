@@ -72,7 +72,10 @@ compileE (Match l r)        = compileE l >> compileE r >> op MATCH
 compileE (NoMatch l r)      = compileE l >> compileE r >> op NOMATCH
 compileE (FunCall s es)     = mapM_ compileE es >> op (CALL s)
 
-compileASGN ModSet (Variable r) e = compileE e >> op (VSET r)
+compileASGN ModSet (Variable r  ) e = compileE e >> op (VSET r)
+compileASGN ModSet (ArrayRef a i) e = compileE e >> compileE i >> op (ASET a)
+compileASGN ModSet (FieldRef i  ) e = compileE e >> compileE i >> op FSET
+compileASGN ModSet (BuiltInVar b) e = compileE e >> op (BSET b)
 
 compileINCR Pre (Variable r) = do
    op $ PUSH (VDouble 1)

@@ -28,6 +28,9 @@ bc POP             = modify $ \s -> s {hcSTACK = tail(hcSTACK s) }
 bc FIELD           = do (top:st) <- gets hcSTACK
                         f <- fref top
                         modify $ \s -> s {hcSTACK = f:st}
+bc FSET            = do (i:v:st) <- gets hcSTACK
+                        assignToField ModSet i v
+                        modify $ \s -> s {hcSTACK = st}
 bc (VAR r)         = do v <- liftIO $! readIORef r
                         modify $ \s -> s {hcSTACK = v:(hcSTACK s) }
 bc (VSET r)        = do (top:st) <- gets hcSTACK
@@ -35,6 +38,9 @@ bc (VSET r)        = do (top:st) <- gets hcSTACK
                         modify $ \s -> s {hcSTACK = st}
 bc (BVAR b)        = do v <- evalBVariableRef b
                         modify $ \s -> s {hcSTACK = v:(hcSTACK s) }
+bc (BSET b)        = do (top:st) <- gets hcSTACK
+                        modBVar b (\oldVal -> calcNewValue oldVal ModSet top)
+                        modify $ \s -> s {hcSTACK = st}
 bc (CMP o)         = do (rv:lv:st) <- gets hcSTACK
                         let v = cmpValues lv rv o
                         modify $ \s -> s {hcSTACK = v:(hcSTACK s) }
