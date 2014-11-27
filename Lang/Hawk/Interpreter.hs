@@ -34,8 +34,7 @@ import Lang.Hawk.Runtime
 data HawkContext = HawkContext
                  { hcFields   :: (IM.IntMap Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
-                 , hcStack    :: ![M.Map String Value]
-                 , hcRetVal   :: !Value
+
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
 
@@ -71,8 +70,7 @@ emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcFields   = IM.empty
                  , hcArrays   = M.empty
-                 , hcStack    = []
-                 , hcRetVal   = VDouble 0
+
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 
@@ -81,20 +79,20 @@ emptyContext s = HawkContext
                  , hcOPCODES  = F.toList opcodes
                  , hcSHUTDOWN = F.toList shutdown
 
-                 , hcARGC     = defstr ""
-                 , hcARGV     = defstr ""
-                 , hcFILENAME = defstr "" 
-                 , hcFNR      = VDouble 0 
-                 , hcFS       = defstr " " 
-                 , hcNF       = VDouble 0 
-                 , hcNR       = VDouble 0 
-                 , hcOFMT     = defstr "%.6f" 
-                 , hcOFS      = defstr " " 
-                 , hcORS      = defstr "\n" 
-                 , hcRLENGTH  = VDouble 0 
-                 , hcRS       = defstr "\n" 
-                 , hcRSTART   = VDouble 0 
-                 , hcSUBSEP   = defstr "\034" 
+                 , hcARGC     = defstr  ""
+                 , hcARGV     = defstr  ""
+                 , hcFILENAME = defstr  ""
+                 , hcFNR      = VDouble 0
+                 , hcFS       = defstr  " "
+                 , hcNF       = VDouble 0
+                 , hcNR       = VDouble 0
+                 , hcOFMT     = defstr  "%.6f"
+                 , hcOFS      = defstr  " "
+                 , hcORS      = defstr  "\n"
+                 , hcRLENGTH  = VDouble  0
+                 , hcRS       = defstr  "\n"
+                 , hcRSTART   = VDouble 0
+                 , hcSUBSEP   = defstr  "\034"
                  }
   where (startup, opcodes, shutdown) = compile s
 
