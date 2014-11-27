@@ -15,7 +15,7 @@ import qualified Data.Foldable as F
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
-import Control.Monad.Cont
+
 import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
@@ -60,21 +60,6 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-data KBlock = KBlock { kNext  :: !(() -> Interpreter ())
-                     , kExit  :: !(() -> Interpreter ())
-                     , kRet   :: !(Maybe Value -> Interpreter ())
-                     , kCont  :: !(() -> Interpreter ())
-                     , kBreak :: !(() -> Interpreter ())
-                     }
-
-emptyKBlock :: KBlock
-emptyKBlock = KBlock { kNext  = return
-                     , kExit  = return
-                     , kRet   = \_ -> return ()
-                     , kCont  = return
-                     , kBreak = return
-                     }
-
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m
 
@@ -113,12 +98,12 @@ emptyContext s = HawkContext
                  }
   where (startup, opcodes, shutdown) = compile s
 
-newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
-                        deriving (Monad, MonadIO, MonadCont, MonadState HawkContext,
+newtype Interpreter a = Interpreter (StateT HawkContext IO a)
+                        deriving (Monad, MonadIO, MonadState HawkContext,
                                   Applicative, Functor)
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
-runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
+runInterpreter (Interpreter stt) c = execStateT stt c
 
 unsup s = fail $ s ++ " are not yet supported"
 
@@ -267,22 +252,23 @@ decrArr n arr@(ArrayRef name ref) = do
    return $! ppval (d+1) d n
 
 -- Execute a statement
-exec :: KBlock -> Statement -> Interpreter ()
-exec _ (Expression e) = {-# SCC "execEXPR"  #-} eval e >> return ()
-exec k (Block es)     = {-# SCC "execBLOCK" #-} mapM_ (exec k) es
-exec k (IF c t me)    = {-# SCC "execIF"    #-} execIF k c t me
-exec k w@(WHILE c s)  = {-# SCC "execWHILE" #-} execWHILE k w c s 
-exec k (FOR i c st s) = {-# SCC "execFOR"   #-} execFOR k i c st s
-exec k d@(DO s c)     = {-# SCC "execDO"    #-} execDO k d s c 
-exec k f@(FOREACH v@(Variable ref) arr st) = {-# SCC "execFE" #-} execFOREACH k f v ref arr st
-exec _ (PRINT es)     = {-# SCC "execPRINT" #-} execPRINT es
-exec k (BREAK)        = {-# SCC "execBREAK" #-} (kBreak k) ()
-exec k (CONT)         = {-# SCC "execCONT"  #-} (kCont  k) ()
-exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
-exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
-exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
-exec _ (NOP)          = {-# SCC "execNOP"   #-} return ()
-exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
+exec = undefined
+-- exec :: KBlock -> Statement -> Interpreter ()
+-- exec _ (Expression e) = {-# SCC "execEXPR"  #-} eval e >> return ()
+-- exec k (Block es)     = {-# SCC "execBLOCK" #-} mapM_ (exec k) es
+-- exec k (IF c t me)    = {-# SCC "execIF"    #-} execIF k c t me
+-- exec k w@(WHILE c s)  = {-# SCC "execWHILE" #-} execWHILE k w c s 
+-- exec k (FOR i c st s) = {-# SCC "execFOR"   #-} execFOR k i c st s
+-- exec k d@(DO s c)     = {-# SCC "execDO"    #-} execDO k d s c 
+-- exec k f@(FOREACH v@(Variable ref) arr st) = {-# SCC "execFE" #-} execFOREACH k f v ref arr st
+-- exec _ (PRINT es)     = {-# SCC "execPRINT" #-} execPRINT es
+-- exec k (BREAK)        = {-# SCC "execBREAK" #-} (kBreak k) ()
+-- exec k (CONT)         = {-# SCC "execCONT"  #-} (kCont  k) ()
+-- exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
+-- exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
+-- exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
+-- exec _ (NOP)          = {-# SCC "execNOP"   #-} return ()
+-- exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
 
 evalArith op le re = calcArith <$> eval le <*> eval re <*> pure op
@@ -494,70 +480,24 @@ evalAssign op p v = do
        (BuiltInVar name)  -> assignToBVar  op name val
        otherwise -> fail "Only to-field and to-variable assignments are supported"
 
+-- -- TODO: The order in which the keys will be traversed may be suprising
+-- execFOREACH k f v vname arr st = do
+--      arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
+--      callCC $ \br -> do
+--        let k' = k {kBreak = br}
+--            nextFor kk []         = br ()
+--            nextFor kk ((_,s):ss) = do
+--              assignToRef ModSet vname (valstr $ B.pack s)
+--              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
+--              seq kk' $ exec kk' st
+--              nextFor kk' ss
+--        nextFor k' arrData
+--        br ()
+--    where inArray (a, _) = a == arr
 
-execIF k c t me = do
-     b <- liftM toBool $! eval c
-     if b
-     then exec k t
-     else case me of
-          Nothing -> return ()
-          Just es -> exec k es
-
-execWHILE k w c s = callCC $ \br -> do
-     let k' = k {kBreak = br, kCont = \_ -> nextWhile k'}
-         nextWhile kk = do
-            b <- liftM toBool $! eval c
-            when b $ (exec kk s >> nextWhile kk)
-            br ()
-     nextWhile k'
-
-execFOR k i c st s = callCC $ \br -> do
-    let k' = k {kBreak = br, kCont = \_ -> nextFor k'}
-        -- TODO: optional expressoins
-        initFor    = eval (fromJust i)
-        nextFor kk = eval (fromJust st) >> execFor kk
-        execFor kk = do
-           b <- liftM toBool $! eval (fromJust c)
-           when b $ exec kk s >> nextFor kk
-           br ()
-    initFor
-    execFor k'
-
-execDO k d s c = callCC $ \br -> do
-     let k' = k {kBreak = br, kCont = \_ -> nextDo k'}
-         nextDo kk = do
-            exec kk s
-            b <- liftM toBool $! eval c
-            when b $ nextDo kk
-            br ()
-     nextDo k'
-
--- TODO: The order in which the keys will be traversed may be suprising
-execFOREACH k f v vname arr st = do
-     arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
-     callCC $ \br -> do
-       let k' = k {kBreak = br}
-           nextFor kk []         = br ()
-           nextFor kk ((_,s):ss) = do
-             assignToRef ModSet vname (valstr $ B.pack s)
-             let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
-             seq kk' $ exec kk' st
-             nextFor kk' ss
-       nextFor k' arrData
-       br ()
-   where inArray (a, _) = a == arr
-
-execPRINT es = do
-   ofs <- liftM toString $! eval (BuiltInVar OFS)
-   ors <- liftM toString $! eval (BuiltInVar ORS)
-   str <- case es of
-      []        -> gets hcThisLine
-      otherwise -> liftM (B.intercalate ofs . map toString) $ mapM eval es
-   liftIO $ B.putStr $ B.append str ors
-
-execRET k me = case me of
-      Nothing   -> (kRet k) Nothing
-      Just expr -> eval expr >>= (kRet k . Just)
+-- execRET k me = case me of
+--       Nothing   -> (kRet k) Nothing
+--       Just expr -> eval expr >>= (kRet k . Just)
 
 execDEL e = case e of
     (ArrayRef arr idx) -> do
