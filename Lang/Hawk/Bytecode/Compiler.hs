@@ -118,12 +118,14 @@ compileWHILE e s = do
 compileFOR mi mc ms st = do
    maybe (return ()) compileE mi
    enter <- gets csCur
-   maybe (return ()) compileE mc
-   leave <- mkJF
-   compileS st
-   maybe (return ()) compileE ms
+   lvs <- replicateM 2 $ do
+      maybe (return ()) compileE mc
+      leave <- mkJF
+      compileS st
+      maybe (return ()) compileE ms
+      return leave
    op $ JMP enter
-   putJF leave
+   mapM_ putJF lvs
 
 compileDO s e = do
    enter <- gets csCur
@@ -141,4 +143,5 @@ compileSection mp ms = do
      Nothing         -> compileStmt ms
      (Just (EXPR e)) -> do compileE e
                            jf $ compileStmt ms
+     otherwise       -> return ()
   where compileStmt = maybe (op $ PRN 0) compileS

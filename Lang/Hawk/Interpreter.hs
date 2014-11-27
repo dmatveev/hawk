@@ -110,15 +110,7 @@ emptyContext s = HawkContext
                  , hcRSTART   = VDouble 0 
                  , hcSUBSEP   = defstr "\034" 
                  }
-  where initialBuiltInVars = [ (FNR, VDouble 0)
-                             , (NR,  VDouble 0)
-                             , (NF,  VDouble 0)
-                             , (OFS, defstr " ")
-                             , (FS,  defstr " ")
-                             , (ORS, defstr "\n")
-                             , (RS,  defstr "\n")
-                             ]
-        opcodes = F.toList $ runCompiler (mapM compileTL $ procUnits s) csInitial
+  where opcodes = F.toList $ runCompiler (mapM compileTL $ procUnits s) csInitial
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
                         deriving (Monad, MonadIO, MonadCont, MonadState HawkContext)
