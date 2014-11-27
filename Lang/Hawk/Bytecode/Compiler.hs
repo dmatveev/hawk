@@ -11,6 +11,7 @@ import Lang.Hawk.Basic
 import Lang.Hawk.AST
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Value
+import Lang.Hawk.Analyzer
 
 data CompilerState = CompilerState {csBC :: Bytecode, csCur :: Int}
 
@@ -141,7 +142,15 @@ compileTL (Section mp ms) = compileSection mp ms
 compileSection mp ms = do
    case mp of
      Nothing         -> compileStmt ms
-     (Just (EXPR e)) -> do compileE e
-                           jf $ compileStmt ms
+     (Just BEGIN)    -> compileStmt ms
+     (Just (EXPR e)) -> compileE e >> (jf $ compileStmt ms)
+     (Just END)      -> compileStmt ms
      otherwise       -> return ()
   where compileStmt = maybe (op $ PRN 0) compileS
+
+compile :: AwkSource -> (Bytecode, Bytecode, Bytecode)
+compile src = (cc begins, cc actions, cc ends)
+  where cc s    = runCompiler (mapM compileTL s) csInitial
+        begins  = filter isBegin src
+        actions = procUnits src
+        ends    = filter isEnd src

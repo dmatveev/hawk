@@ -32,8 +32,7 @@ import Lang.Hawk.Analyzer
 import Lang.Hawk.Runtime
 
 data HawkContext = HawkContext
-                 { hcCode     :: !AwkSource
-                 , hcFields   :: (IM.IntMap Value)
+                 { hcFields   :: (IM.IntMap Value)
                  , hcArrays   :: !(M.Map (String, String) Value)
                  , hcStack    :: ![M.Map String Value]
                  , hcRetVal   :: !Value
@@ -41,7 +40,9 @@ data HawkContext = HawkContext
                  , hcStdGen   :: StdGen
 
                  , hcSTACK    :: [Value]
+                 , hcSTARTUP  :: ![OpCode]
                  , hcOPCODES  :: ![OpCode]
+                 , hcSHUTDOWN :: ![OpCode]
 
                  , hcARGC     :: !Value
                  , hcARGV     :: !Value
@@ -83,8 +84,7 @@ m *!! k = IM.findWithDefault (VDouble 0) k m
 
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
-                 { hcCode     = s
-                 , hcFields   = IM.empty
+                 { hcFields   = IM.empty
                  , hcArrays   = M.empty
                  , hcStack    = []
                  , hcRetVal   = VDouble 0
@@ -92,7 +92,9 @@ emptyContext s = HawkContext
                  , hcStdGen   = mkStdGen 0
 
                  , hcSTACK    = []
-                 , hcOPCODES  = opcodes
+                 , hcSTARTUP  = F.toList startup
+                 , hcOPCODES  = F.toList opcodes
+                 , hcSHUTDOWN = F.toList shutdown
 
                  , hcARGC     = defstr ""
                  , hcARGV     = defstr ""
@@ -109,7 +111,7 @@ emptyContext s = HawkContext
                  , hcRSTART   = VDouble 0 
                  , hcSUBSEP   = defstr "\034" 
                  }
-  where opcodes = F.toList $ runCompiler (mapM compileTL $ procUnits s) csInitial
+  where (startup, opcodes, shutdown) = compile s
 
 newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a)
                         deriving (Monad, MonadIO, MonadCont, MonadState HawkContext,
@@ -117,100 +119,6 @@ newtype Interpreter a = Interpreter (StateT HawkContext (ContT HawkContext IO) a
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = runContT (execStateT stt c) return
-
--- Execute all BEGIN actions, if any
-initialize :: Interpreter ()
-initialize = do
-    actions <- (gets hcCode >>= filterM isBegin)
-    forM_ actions $ \(Section _ ms) -> do
-      case ms of
-        Nothing  -> return ()
-        (Just s) -> exec emptyKBlock s
-  where isBegin (Section (Just BEGIN) _) = return True
-        isBegin _                        = return False
-
--- Execute all END actions, if any
-finalize :: Interpreter ()
-finalize = do
-    actions <- (gets hcCode >>= filterM isEnd)
-    forM_ actions $ \(Section _ ms) -> do
-      case ms of
-        Nothing  -> return ()
-        (Just s) -> {-# SCC "execFIN" #-} exec emptyKBlock s
-  where isEnd (Section (Just END) _) = return True
-        isEnd _                      = return False
-
--- This is actually an entry point to the Interpreter.
--- intMain :: Handle -> String -> Interpreter ()
--- intMain h inputFile = do
---     assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
---     assignToBVar ModSet FNR      (VDouble 0)
---     initialize
---     callCC $ \ex -> do
---        let k = emptyKBlock {kExit = ex}
---        readLoop k B.empty False
---        ex ()
---     finalize
---   where
---     readLoop k thisBuf eof = do
---       rs <- liftM toString $ eval (BuiltInVar RS)
---       let nrs = B.length rs
---       case B.breakSubstring rs thisBuf of
---          (l, rest) | B.null l && B.null rest && eof ->
---                         return ()
---                    | B.null rest && eof -> do
---                         let k' = k { kNext = (const $ return ()) }
---                         seq k' $ processLine k' l
---                    | B.null rest && not eof -> do
---                         nextChunk <- liftIO $ B.hGet h 8192
---                         readLoop k (B.append thisBuf nextChunk) (B.null nextChunk)  
---                    | otherwise -> do
---                         let r' = B.drop nrs rest
---                             k' = k { kNext = \_ -> readLoop k' r' eof } 
---                         seq k' $ processLine k' l
---                         readLoop k' r' eof
-
-
--- processLine takes a new (next) line from input stream, prepares
--- the execution context, and evaluates the awk code with this context.
--- processLine :: KBlock -> B.ByteString -> Interpreter ()
--- processLine k s = do
---     oldContext <- get
---     thisFields <- liftM (map valstr) $ splitIntoFields s
---     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
---         thisContext = oldContext { hcThisLine = s, hcFields = thisFldMap }
---     put $! thisContext
---     modify $ \s -> s { hcNF  = VDouble (fromIntegral $ length thisFields)
---                      , hcNR  = VDouble (succ $ toDouble $ hcNR s)
---                      , hcFNR = VDouble (succ $ toDouble $ hcNR s)
---                      }
---     -- find matching actions for this line and execute them
---     actions <- (gets hcCode >>= filterM matches)
---     forM_ actions $ \(Section _ ms) -> exec k $
---        case ms of
---          Nothing  -> (PRINT [])
---          (Just s) -> s
-
-
--- splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
--- splitIntoFields str = do
---    fs <- liftM toString $ eval (BuiltInVar FS)
---    return $ splitIntoFields' fs str
-
--- Checks if the given top-level form matches the current line
--- matches :: TopLevel -> Interpreter Bool
--- matches (Function _ _ _)     = return False
--- matches (Section Nothing  _) = return True
--- matches (Section (Just p) _) = patternMatches p
-
-
--- -- Checks if the given pattern matches the current line
--- patternMatches :: Pattern -> Interpreter Bool
--- patternMatches BEGIN    = return False
--- patternMatches END      = return False
--- patternMatches (EXPR e) = liftM toBool $! eval e
--- patternMatches (RE s)   = gets hcThisLine >>= \l -> return $! l =~ s
--- patternMatches _        = return False -- Not supported yet
 
 unsup s = fail $ s ++ " are not yet supported"
 
@@ -262,14 +170,13 @@ eval (FunCall "gsub"   [vr, vs, vt]) = evalGSubVar vr vs vt
 eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
 eval (FunCall "sub"    [vr, vs, vt]) = evalSubVar vr vs vt
 eval (FunCall "match"  [vs, vr])     = evalFMatch vs vr
-eval (FunCall f args)                = evalFunCall f args
+eval (FunCall f args)                = undefined --evalFunCall f args
 eval (Assignment op p v)             = evalAssign op p v
 
 proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
 proxyFcn f e = do
      d <- liftM toDouble $ eval e
      return $! VDouble $ f d
-
 
 assignToField op ref val = do
      i <- liftM toInt $! eval ref
@@ -310,31 +217,6 @@ assignToRef op ref val = do
      r <- liftIO $ atomicModifyIORef' ref (\v -> let nv = calcNewValue v op val in (nv, nv))
      return $! r
 
--- assignToVar op name val = do
---      -- As the lookup, variable assignment is also special.
---      -- At first, we try to update variable in the current scope (if any),
---      -- then we refer to the global scope.
---      oldVars  <- gets hcVars
---      oldStack <- gets hcStack
---      case oldStack of
---        (f:_) -> case name `M.lookup` f of
---                   Nothing  -> updGlobal oldVars
---                   (Just v) -> updStack oldStack
---        []    -> updGlobal oldVars
---   where
---      updGlobal oldVars = do
---        let newValue = calcNewValue (oldVars *! name) op val
---            newVars  = M.insert name newValue oldVars
---        modify (\s -> s { hcVars = newVars })
---        return $! newValue
-
---      updStack (f:fs) = do
---        let newValue = calcNewValue (f *! name) op val
---            newVars  = M.insert name newValue f
---        modify (\s -> s { hcStack = newVars:fs })
---        return $! newValue
-
--- Currently for internal use only
 assignToBVar op name val = do
    modBVar name (\oldVal -> calcNewValue oldVal op val)
    evalBVariableRef name
@@ -408,18 +290,6 @@ evalFieldRef e = do
      then gets hcThisLine >>= (return . valstr)
      else do fs <- gets hcFields
              return $! fs IM.! i
-
--- evalVariableRef s = do
---      -- Variable lookup is special, since we may have an hierarchy
---      -- of scopes with its personal variables (in function calls).
---      -- So it first we do lookup in stack top, and then in the global
---      -- dictionary.
---      st <- gets hcStack
---      vs <- gets hcVars
---      let globalVal = vs *! s
---      return $! case st of
---        (f:_)     -> M.findWithDefault globalVal s f
---        otherwise -> globalVal
 
 evalBVariableRef ARGC     = gets hcARGC    
 evalBVariableRef ARGV     = gets hcARGV    
@@ -581,42 +451,41 @@ evalFMatch vs vr = do
      modify $ \s -> s { hcRSTART = retS, hcRLENGTH = retL }
      return $! retS
 
-evalFunCall f args = do
-     mfcn <- liftM (find (func f)) $ gets hcCode
-     case mfcn of
-       (Just (Function _ argNames stmt)) -> do
-           -- Build a stack frame for function call first
-           argVals <- mapM eval args
-           let numArgs = length argNames
-               numVals = length argVals
-               numLocs = numArgs - numVals
+-- evalFunCall f args = do
+--      mfcn <- liftM (find (func f)) $ gets hcCode
+--      case mfcn of
+--        (Just (Function _ argNames stmt)) -> do
+--            -- Build a stack frame for function call first
+--            argVals <- mapM eval args
+--            let numArgs = length argNames
+--                numVals = length argVals
+--                numLocs = numArgs - numVals
 
-               boundArgs = zip argNames argVals
-               localVars = if numLocs > 0
-                           then zip (drop numVals argNames) $ repeat (VDouble 0)
-                           else []
-               newStackFrame = M.fromList $! boundArgs ++ localVars
+--                boundArgs = zip argNames argVals
+--                localVars = if numLocs > 0
+--                            then zip (drop numVals argNames) $ repeat (VDouble 0)
+--                            else []
+--                newStackFrame = M.fromList $! boundArgs ++ localVars
 
-           oldStack <- gets hcStack
-           modify $ (\s -> s { hcStack = newStackFrame:oldStack, hcRetVal = VDouble 0 })
-           callCC $ \ret -> do
-              let retHook (Just v) = modify (\s -> s { hcRetVal = v }) >> ret ()
-                  retHook Nothing  = ret ()
-                  k = seq retHook $ emptyKBlock {kRet = retHook}
-              exec k stmt
-           modify $ (\s -> s { hcStack = oldStack })
-           gets hcRetVal
-       Nothing    -> fail $ f ++ " - unknown function"
-       otherwise  -> fail $ "Fatal error when invoking function " ++ f
-  where
-     func s (Function ss _ _) = s == ss
-     func s _                 = False
+--            oldStack <- gets hcStack
+--            modify $ (\s -> s { hcStack = newStackFrame:oldStack, hcRetVal = VDouble 0 })
+--            callCC $ \ret -> do
+--               let retHook (Just v) = modify (\s -> s { hcRetVal = v }) >> ret ()
+--                   retHook Nothing  = ret ()
+--                   k = seq retHook $ emptyKBlock {kRet = retHook}
+--               exec k stmt
+--            modify $ (\s -> s { hcStack = oldStack })
+--            gets hcRetVal
+--        Nothing    -> fail $ f ++ " - unknown function"
+--        otherwise  -> fail $ "Fatal error when invoking function " ++ f
+--   where
+--      func s (Function ss _ _) = s == ss
+--      func s _                 = False
 
 evalAssign op p v = do
      val <- eval v
      case p of
        (FieldRef ref)     -> assignToField op ref  val
---     (VariableRef name) -> assignToVar   op name val
        (Variable ref)     -> assignToRef   op ref val
        (ArrayRef arr ref) -> assignToArr   op arr ref val
        (BuiltInVar name)  -> assignToBVar  op name val

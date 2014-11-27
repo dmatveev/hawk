@@ -54,7 +54,7 @@ execBC ((JF n):r)  = do (top:st) <- gets hcSTACK
                         modify $ \s -> s {hcSTACK = st}
                         if toBool top then execBC r else jmp n
 execBC ((JMP n):r) = jmp n
-execBC (op:ops)    = do -- liftIO $ putStr $ (show op)
+execBC (op:ops)    = do -- liftIO $ putStrLn $ (show op)
                         bc op
                         execBC ops 
 

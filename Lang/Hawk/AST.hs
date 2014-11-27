@@ -65,3 +65,9 @@ data TopLevel = Section (Maybe Pattern) (Maybe Statement)
                 deriving (Eq, Show)
 
 type AwkSource = [TopLevel]
+
+isBegin (Section (Just BEGIN) _) = True
+isBegin _                        = False
+
+isEnd (Section (Just END) _) = True
+isEnd _                      = False
