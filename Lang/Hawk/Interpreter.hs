@@ -331,13 +331,7 @@ evalArrTest s arr = do
      return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
   where test b = if b then 1 else 0
 
-evalLogic op le re = do
-     l <- liftM toBool $! eval le
-     r <- liftM toBool $! eval re
-     case op of
-          AND -> return $! VDouble $ test (l && r)
-          OR  -> return $! VDouble $ test (l || r)
-   where test b = if b then 1 else 0
+evalLogic op le re = calcLogic <$> pure op <*> eval le <*> eval re
 
 evalMatch s re = do
      l <- liftM toString $! eval s
@@ -350,7 +344,7 @@ evalNoMatch s re = do
      r <- liftM toString $! eval re
      let rv = if r /= "" && l =~ r then 0.0 else 1.0
      return $! VDouble rv
-     
+
 evalAtan2  vx vy = calcAtan2  <$> eval vy <*> eval vx
 evalIndex  vs vt = calcIndex  <$> eval vs <*> eval vt
 evalLength vs    = calcLength <$> eval vs

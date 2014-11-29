@@ -21,7 +21,7 @@ data OpCode = ARITH ArithOp
             | CMP CmpOp
             | NOT
             | NEG
-            | LOG LogOp
+            | LGC LogOp
             | MATCH
             | NOMATCH
             | CALL String

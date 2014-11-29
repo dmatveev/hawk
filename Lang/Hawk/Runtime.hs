@@ -79,6 +79,15 @@ splitWithSep s fs = reverse $! splitWith' s []
               | otherwise -> splitWith' (B.drop nfs y) (x:res)
     nfs = B.length fs
 
+calcLogic :: LogOp -> Value -> Value -> Value
+calcLogic op lv rv = 
+   let l = toBool lv
+       r = toBool rv
+   in case op of
+      AND -> VDouble $! test (l && r)
+      OR  -> VDouble $! test (l || r)
+   where test b = if b then 1 else 0
+
 
 -- Standard functions
 calcAtan2   y x   = VDouble $! atan2 (toDouble y) (toDouble x)
