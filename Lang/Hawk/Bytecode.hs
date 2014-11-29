@@ -27,6 +27,7 @@ data OpCode = ARITH ArithOp
             | CALL String
 
             | DUP
+            | NOOP
             | PRN Int
             | JMP Int
             | JF Int

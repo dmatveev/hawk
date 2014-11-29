@@ -2,9 +2,11 @@
 
 module Lang.Hawk.Bytecode.Compiler where
 
+import Data.Maybe (fromJust)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Sequence as D
 import Data.Sequence ((|>))
+import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
 
 import Lang.Hawk.Basic
@@ -13,36 +15,64 @@ import Lang.Hawk.Bytecode
 import Lang.Hawk.Value
 import Lang.Hawk.Analyzer
 
-data CompilerState = CompilerState {csBC :: Bytecode, csCur :: Int}
+data CompilerState = CompilerState
+                     { csBC  :: Bytecode
+                     , csCur :: Int
+                     , csLS  :: Maybe LoopState
+                     }
 
 csInitial :: CompilerState
-csInitial = CompilerState { csBC = D.empty, csCur = 0 } 
+csInitial = CompilerState D.empty 0 Nothing
+
+data LoopState = LoopState
+                 { lsEnter  :: Int
+                 , lsBreaks :: [Int]
+                 , lsConts  :: [Int]
+                 , lsChecks :: [Int]
+                 }
+
+initialLoopState :: Int -> LoopState
+initialLoopState enter = LoopState enter [] [] [] 
 
 newtype Compiler a = Compiler (State CompilerState a)
-                   deriving (Monad, MonadState CompilerState)
+                   deriving (Monad, MonadState CompilerState, Applicative, Functor)
 
 runCompiler :: Compiler a -> CompilerState -> Bytecode
 runCompiler (Compiler c) b = csBC $ execState c b
 
+loop :: Compiler () -> Compiler ()
+loop body = do
+   oldState <- gets csLS
+   enter <- pos
+   modify $ \s -> s { csLS = Just (initialLoopState enter) }
+   replicateM_ 2 body >> op (JMP enter)
+   leave <- pos
+   loopState <- liftM fromJust $ gets csLS
+   forM_ (lsBreaks loopState) $ putOP (JMP leave)
+   forM_ (lsConts  loopState) $ putOP (JMP enter)
+   forM_ (lsChecks loopState) $ putOP (JF  leave)
+   modify $ \s -> s { csLS = oldState }
+
 op :: OpCode -> Compiler ()
 op c = modify $ \s -> s {csBC = (csBC s) |> c, csCur = succ (csCur s)}
 
-mkJF :: Compiler Int
-mkJF = do
+nop :: Compiler Int
+nop = do
    i <- gets csCur
-   op $ JF 0
+   op NOOP
    return i
 
-putJF :: Int -> Compiler ()
-putJF i = do
-   e <- gets csCur
-   modify $ \s -> s {csBC = D.update i (JF e) (csBC s)}
+pos :: Compiler Int
+pos = gets csCur
+
+putOP :: OpCode -> Int -> Compiler ()
+putOP o i  = modify $ \s -> s{ csBC = D.update i o (csBC s) }
 
 jf :: Compiler () -> Compiler ()
 jf c = do
-   i <- mkJF
+   i <- nop
    c
-   putJF i
+   pos >>= \p -> putOP (JF p) i
 
 drp :: Compiler () -> Compiler ()
 drp c = c >> op DRP
@@ -105,39 +135,47 @@ compileS (WHILE e s)       = compileWHILE e s
 compileS (FOR mi mc ms st) = compileFOR mi mc ms st
 compileS (DO s e)          = compileDO s e
 compileS (PRINT es)        = mapM_ compileE es >> op (PRN (length es))
+compileS (BREAK)           = loopBreak
+compileS (CONT)            = loopCont
 
 compileIF t th el = do
    compileE t
    jf $ compileS th
    maybe (return ()) compileS el
 
-compileWHILE e s = do
-   enter <- gets csCur
+compileWHILE e s = loop $ do
    compileE e
-   leave <- mkJF
+   loopCheck
    compileS s
-   op $ JMP enter
-   putJF leave
 
 compileFOR mi mc ms st = do
    maybe (return ()) compileE mi
-   enter <- gets csCur
-   lvs <- replicateM 2 $ do
-      maybe (return ()) compileE mc
-      leave <- mkJF
+   loop $ do
+      maybe (return ()) compCheck mc
       compileS st
       maybe (return ()) compileE ms
-      return leave
-   op $ JMP enter
-   mapM_ putJF lvs
+  where compCheck c = compileE c >> loopCheck
 
-compileDO s e = do
-   enter <- gets csCur
+
+compileDO s e = loop $ do
    compileS s
    compileE e
-   leave <- mkJF
-   op $ JMP enter
-   putJF leave
+   loopCheck
+
+loopCheck = gets csLS >>= maybe (return ()) putCheck
+  where putCheck ls = do
+          i <- nop
+          modify $ \s -> s { csLS = Just (ls { lsChecks = i:(lsChecks ls) }) }
+
+loopBreak = gets csLS >>= maybe (return ()) putBreak
+  where putBreak ls = do
+          i <- nop
+          modify $ \s -> s { csLS = Just (ls { lsBreaks = i:(lsBreaks ls) }) }
+
+loopCont = gets csLS >>= maybe (return()) putCont
+  where putCont ls = do
+          i <- nop
+          modify $ \s -> s { csLS = Just (ls { lsConts = i:(lsConts ls) }) }
 
 compileTL :: TopLevel -> Compiler ()
 compileTL (Section mp ms) = compileSection mp ms
