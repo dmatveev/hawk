@@ -25,6 +25,10 @@ data OpCode = ARITH ArithOp
             | NOT   
             | NEG   
             | LGC   LogOp
+            | ANXT (IORef Value)
+            | ACHK
+            | FETCH (IORef Array)
+            | KDRP
             | MATCH 
             | CALL  String
             | IN    (IORef Array)

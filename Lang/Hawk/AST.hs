@@ -44,6 +44,7 @@ data Statement = Expression Expression
                | WHILE Expression Statement
                | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression) Statement
                | FOREACH Expression String Statement
+               | FOREACH' (IORef Value) (IORef Array) Statement
                | DO Statement Expression
                | PRINT [Expression]
                | BREAK

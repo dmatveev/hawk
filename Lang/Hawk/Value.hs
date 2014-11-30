@@ -56,5 +56,6 @@ toString (VDouble d) =
         nrs = length rs
         sgn = if d >= 0 then "" else "-"
 
-vNot v = VDouble $! if (toBool v) then 0 else 1
-vNeg v = VDouble $! - toDouble v
+vBool b = VDouble $! if b then 1 else 0
+vNot  v = VDouble $! if (toBool v) then 0 else 1
+vNeg  v = VDouble $! - toDouble v

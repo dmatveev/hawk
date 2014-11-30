@@ -42,6 +42,9 @@ data HawkContext = HawkContext
                  , hcOPCODES  :: ![OpCode]
                  , hcSHUTDOWN :: ![OpCode]
 
+                 , hcKEYS     :: ![String]
+                 , hcKSTACK   :: ![[String]]
+
                  , hcARGC     :: !Value
                  , hcARGV     :: !Value
                  , hcFILENAME :: !Value
@@ -76,6 +79,9 @@ emptyContext s = HawkContext
                  , hcSTARTUP  = F.toList startup
                  , hcOPCODES  = F.toList opcodes
                  , hcSHUTDOWN = F.toList shutdown
+
+                 , hcKEYS     = []
+                 , hcKSTACK   = []
 
                  , hcARGC     = defstr  ""
                  , hcARGV     = defstr  ""

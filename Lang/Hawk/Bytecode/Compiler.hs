@@ -137,6 +137,7 @@ compileS (Block ss)        = drp $ mapM_ compileS ss
 compileS (IF t th el)      = compileIF t th el
 compileS (WHILE e s)       = compileWHILE e s
 compileS (FOR mi mc ms st) = compileFOR mi mc ms st
+compileS (FOREACH' r a st) = compileFOREACH r a st
 compileS (DO s e)          = compileDO s e
 compileS (PRINT es)        = mapM_ compileE es >> op (PRN (length es))
 compileS (BREAK)           = loopBreak
@@ -160,6 +161,15 @@ compileFOR mi mc ms st = do
 
 compileWHILE e s = loop $ compileE e >> loopCheck >> compileS s
 compileDO    s e = loop $ compileS s >> compileE e >> loopCheck
+
+compileFOREACH r a st = do
+   op $ (FETCH a)
+   loop $ do
+      op $ ACHK
+      loopCheck
+      op $ (ANXT r)
+      compileS st
+   op $ KDRP
 
 loopCheck = gets csLS >>= maybe (return ()) putCheck
   where putCheck ls = do

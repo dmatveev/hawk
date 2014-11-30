@@ -46,7 +46,8 @@ stack     = gets hcSTACK
 
 dbg :: OpCode -> Interpreter ()
 {-# INLINE dbg #-}
-dbg op = return () -- liftIO $ putStrLn (show op)
+dbg _ = return ()
+--dbg op = liftIO $ putStrLn (show op)
 
 bc :: OpCode -> Interpreter ()
 bc (ARITH o)       = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
@@ -74,7 +75,12 @@ bc (PRN n)         = popN_ n >>= prn
 bc MATCH           = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
 bc (IN r)          = pop     >>= \(idx,st)   -> alkp r idx >>= flip push st 
 bc (ADEL r)        = pop_    >>= \idx        -> adel r idx
-bc (ADRP r)        = adrp r 
+bc (ADRP r)        = liftIO $ writeIORef r M.empty 
+bc (FETCH r)       = afetch r
+bc (ANXT r)        = anxt r
+bc ACHK            = push_   =<< (gets hcKEYS >>= \ks -> return $! vBool (not $ null ks))
+bc KDRP            = modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
+                                      , hcKSTACK = tail (hcKSTACK s) }
 bc DRP             = modify $ \s -> s { hcSTACK = [] }
 bc op              = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
 
@@ -110,8 +116,18 @@ amod r i v o = liftIO $ do
 adel :: IORef Array -> Value -> Interpreter ()
 adel r i = liftIO $ modifyIORef' r $ \arr -> M.delete (key i) arr
 
-adrp :: IORef Array -> Interpreter ()
-adrp r = liftIO $ writeIORef r M.empty
+afetch :: IORef Array -> Interpreter ()
+afetch r = do
+   ks <- liftM (map fst . M.toList) $ liftIO (readIORef r)
+   modify $ \s -> s { hcKSTACK = (hcKEYS s):(hcKSTACK s)
+                    , hcKEYS   = ks
+                    }
+
+anxt :: IORef Value -> Interpreter ()
+anxt r = do
+   (k:ks) <- gets hcKEYS
+   liftIO $ writeIORef r (valstr $ B.pack k)
+   modify $ \s -> s { hcKEYS = ks }
 
 fref :: Value -> Interpreter Value
 fref v = do

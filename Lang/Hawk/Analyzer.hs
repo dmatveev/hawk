@@ -165,7 +165,7 @@ traceS (Block ss)             = mapM_ traceS ss
 traceS (IF e s ms)            = traceE e >> (trBlock $ traceS s >> mtry traceS ms)
 traceS (WHILE e s)            = trBlock $ traceE e >> traceS s
 traceS (FOR mi mc ms s)       = trBlock $ mapM_ (mtry traceE) [mi, mc, ms] >> traceS s
-traceS (FOREACH e _ s)        = trBlock $ traceE e >> traceS s
+traceS (FOREACH e a s)        = trBlock $ traceE e >> updArr a >> traceS s
 traceS (DO s e)               = trBlock $ traceS s >> traceE e >> return ()
 traceS (PRINT es)             = mapM_ traceE es
 traceS (EXIT me)              = mtry traceE me >> updFlow
@@ -255,7 +255,9 @@ putRefsS (IF e s ms)              = IF         <$> putRefsE e <*> putRefsS s <*>
 putRefsS (WHILE e s)              = WHILE      <$> putRefsE e <*> putRefsS s
 putRefsS (FOR mi mc ms s)         = FOR        <$> mrefs mi <*> mrefs mc <*> mrefs ms
                                                <*> putRefsS s
-putRefsS (FOREACH e a s)          = FOREACH    <$> putRefsE e <*> pure a <*> putRefsS s
+putRefsS (FOREACH (VariableRef v) a s) = FOREACH' <$> asks ((M.! v) . rtVars)
+                                                  <*> asks ((M.! a) . rtArrs)
+                                                  <*> putRefsS s
 putRefsS (DO s e)                 = DO         <$> putRefsS s <*> putRefsE e
 putRefsS (PRINT es)               = PRINT      <$> mapM putRefsE es
 putRefsS (EXIT me)                = EXIT       <$> mrefs me
