@@ -72,10 +72,12 @@ bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st
 bc DUP             = stack   >>= \st@(top:_) -> push top st
 bc (PRN n)         = popN_ n >>= prn
 bc MATCH           = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
+bc (IN r)          = pop     >>= \(idx,st)   -> alkp r idx >>= flip push st 
 bc (ADEL r)        = pop_    >>= \idx        -> adel r idx
 bc (ADRP r)        = adrp r 
 bc DRP             = modify $ \s -> s { hcSTACK = [] }
 bc op              = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
+
 execBC :: [OpCode] -> Interpreter () 
 execBC []             = return ()
 execBC (op@(JF  n):r) = dbg op >> pop_    >>= \top -> if toBool top then execBC r else jmp n
@@ -91,6 +93,10 @@ aref r i = liftIO $ readIORef r >>= \arr -> return $! arr *! (key i)
 
 aset :: IORef Array -> Value -> Value -> Interpreter ()
 aset r i v = liftIO $ modifyIORef' r $ \arr -> M.insert (key i) v arr
+
+alkp :: IORef Array -> Value -> Interpreter Value
+alkp r i = liftIO (readIORef r) >>= \arr -> return $! VDouble $!
+   if M.member (key i) arr then 1 else 0
 
 amod :: IORef Array -> Value -> Value -> ArithOp -> Interpreter Value
 amod r i v o = liftIO $ do

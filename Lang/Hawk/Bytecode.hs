@@ -27,6 +27,7 @@ data OpCode = ARITH ArithOp
             | LGC   LogOp
             | MATCH 
             | CALL  String
+            | IN    (IORef Array)
             | ADEL  (IORef Array)
             | ADRP  (IORef Array)
             | DUP
