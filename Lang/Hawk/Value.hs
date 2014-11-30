@@ -2,6 +2,7 @@
 
 module Lang.Hawk.Value where
 
+import qualified Data.Map.Strict as M
 import Control.Applicative ((<*))
 import qualified Data.Attoparsec.ByteString.Char8 as AP
 import qualified Data.ByteString.Char8 as B
@@ -13,6 +14,8 @@ import Lang.Hawk.Basic
 data Value = VString !B.ByteString !Double !Bool
            | VDouble !Double
              deriving (Eq, Show)
+
+type Array = M.Map String Value 
 
 valstr :: B.ByteString -> Value
 valstr s = VString s n b

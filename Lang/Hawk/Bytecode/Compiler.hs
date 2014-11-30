@@ -88,7 +88,7 @@ compileE (Arith a l r)      = compileE l >> compileE r >> op (ARITH a)
 compileE (Const a)          = op (PUSH (toValue a))
 compileE (FieldRef e)       = compileE e >> op FIELD
 compileE (Variable r)       = op (VAR r)
-compileE (ArrayRef s e)     = compileE e >> op (ARR s)
+compileE (Array a e)        = compileE e >> op (ARR a)
 compileE (BuiltInVar b)     = op (BVAR b)
 compileE (Assignment m p e) = compileASGN m p e
 compileE (Incr n e)         = compileINCR n e
@@ -108,12 +108,12 @@ compileASGN m p e =
    else compileMOD' Pre m p (compileE e)
 
 compileSET (Variable r  ) = op (VSET r)
-compileSET (ArrayRef a i) = compileE i >> op (ASET a)
+compileSET (Array    a i) = compileE i >> op (ASET a)
 compileSET (FieldRef i  ) = compileE i >> op FSET
 compileSET (BuiltInVar b) = op (BSET b)
 
 compileMOD m (Variable r  ) = op (VMOD m r)
-compileMOD m (ArrayRef a i) = compileE i >> op (AMOD m a)
+compileMOD m (Array    a i) = compileE i >> op (AMOD m a)
 compileMOD m (FieldRef i  ) = compileE i >> op (FMOD m)
 compileMOD m (BuiltInVar b) = op (BMOD m b)
 
@@ -140,6 +140,9 @@ compileS (DO s e)          = compileDO s e
 compileS (PRINT es)        = mapM_ compileE es >> op (PRN (length es))
 compileS (BREAK)           = loopBreak
 compileS (CONT)            = loopCont
+compileS (NOP)             = op $ DRP
+compileS (DELELM r e)      = compileE e >> op (ADEL r)
+compileS (DELARR r)        = op (ADRP r)
 
 compileIF t th el = do
    compileE t

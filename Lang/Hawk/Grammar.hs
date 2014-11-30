@@ -166,7 +166,7 @@ stForEach = do
     s <- statement
     return $ FOREACH var arr s
 
-stDelete = DELETE <$> (rsvd "delete" >> arrayRef)
+stDelete = DELETE <$> (rsvd "delete" >> (try arrayRef <|> variableRef))
 stBreak  = rsvd "break"    >> return BREAK
 stCont   = rsvd "continue" >> return CONT
 stNext   = rsvd "next"     >> return NEXT

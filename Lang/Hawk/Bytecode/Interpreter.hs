@@ -4,6 +4,7 @@ import Data.IORef
 import Data.Fixed (mod')
 import Control.Exception
 import Control.Monad.State.Strict
+import qualified Data.Map as M
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
 
@@ -43,6 +44,10 @@ push v st = modify $ \s -> s { hcSTACK = seq v v:st }
 push_ v   = modify $ \s -> s { hcSTACK = seq v v:(hcSTACK s) }
 stack     = gets hcSTACK
 
+dbg :: OpCode -> Interpreter ()
+{-# INLINE dbg #-}
+dbg op = return () -- liftIO $ putStrLn (show op)
+
 bc :: OpCode -> Interpreter ()
 bc (ARITH o)       = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
 bc (PUSH v)        = push_   v
@@ -56,6 +61,9 @@ bc (VMOD o r)      = pop_    >>= \top -> liftIO $ modifyIORef' r (\v -> calcArit
 bc (BVAR b)        = push_   =<< evalBVariableRef b
 bc (BSET b)        = pop_    >>= \top -> modBVar b (const top)
 bc (BMOD o b)      = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
+bc (ARR r)         = pop     >>= \(idx,st)   -> aref r idx >>= flip push st
+bc (ASET r)        = pop2    >>= \(idx,v,st) -> aset r idx v >> push v st
+bc (AMOD o r)      = pop2    >>= \(idx,v,st) -> amod r idx v o >>= flip push st
 bc (CMP o)         = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
 bc (LGC o)         = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
 bc NOT             = pop     >>= \(top,st)   -> push (vNot top) st
@@ -63,16 +71,41 @@ bc NEG             = pop     >>= \(top,st)   -> push (vNeg top) st
 bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st
 bc DUP             = stack   >>= \st@(top:_) -> push top st
 bc (PRN n)         = popN_ n >>= prn
-bc DRP             = modify $ \s -> s { hcSTACK = [] }
 bc MATCH           = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
-
+bc (ADEL r)        = pop_    >>= \idx        -> adel r idx
+bc (ADRP r)        = adrp r 
+bc DRP             = modify $ \s -> s { hcSTACK = [] }
+bc op              = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
 execBC :: [OpCode] -> Interpreter () 
-execBC []          = return ()
-execBC ((JF n):r)  = pop_    >>= \top -> if toBool top then execBC r else jmp n
-execBC ((JMP n):r) = jmp n
-execBC (op:ops)    = do -- liftIO $ putStrLn $ (show op)
-                        bc op
-                        execBC ops 
+execBC []             = return ()
+execBC (op@(JF  n):r) = dbg op >> pop_    >>= \top -> if toBool top then execBC r else jmp n
+execBC (op@(JMP n):r) = dbg op >> jmp n
+execBC (op:ops)       = dbg op >> bc op >> execBC ops 
+
+key :: Value -> String
+{-# INLINE key #-}
+key = B.unpack . toString
+
+aref :: IORef Array -> Value -> Interpreter Value
+aref r i = liftIO $ readIORef r >>= \arr -> return $! arr *! (key i)
+
+aset :: IORef Array -> Value -> Value -> Interpreter ()
+aset r i v = liftIO $ modifyIORef' r $ \arr -> M.insert (key i) v arr
+
+amod :: IORef Array -> Value -> Value -> ArithOp -> Interpreter Value
+amod r i v o = liftIO $ do
+   arr <- liftIO $ readIORef r
+   let idx      = key i
+       newValue = calcArith (arr *! idx) v o
+       newArray = M.insert idx newValue arr
+   liftIO $ writeIORef r (seq newArray newArray)
+   return $! newValue
+
+adel :: IORef Array -> Value -> Interpreter ()
+adel r i = liftIO $ modifyIORef' r $ \arr -> M.delete (key i) arr
+
+adrp :: IORef Array -> Interpreter ()
+adrp r = liftIO $ writeIORef r M.empty
 
 fref :: Value -> Interpreter Value
 fref v = do

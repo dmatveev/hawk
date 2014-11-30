@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
 
 module Lang.Hawk.Analyzer where
 
@@ -9,7 +9,7 @@ import Control.Applicative (Applicative, (<*>), (<$>), pure)
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
-
+import qualified Data.Set as S
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 
@@ -62,7 +62,7 @@ data Effects = Effects
              { eVars     :: !(M.Map String Tag)
              , eBVars    :: !(M.Map BVar Tag)
              , eFields   :: Tag
-             , eArrays   :: Bool
+             , eArrays   :: S.Set String
              , eFunCalls :: Bool
              , eRanges   :: Bool
              , eDepth    :: Int
@@ -74,7 +74,7 @@ emptyEffects = Effects
              { eVars     = M.empty
              , eBVars    = M.empty
              , eFields   = LOCAL
-             , eArrays   = False
+             , eArrays   = S.empty
              , eFunCalls = False
              , eRanges   = False
              , eDepth    = 0
@@ -101,10 +101,10 @@ cmb 0 UNDEF  LOCAL  = LOCAL
 cmb _ UNDEF  LOCAL  = GLOBAL
 cmb _ LOCAL  LOCAL  = LOCAL
 
-updVarTag  s t = modify (\e -> e {eVars     = M.insert s t (eVars  e)}) >> return t
-updBVarTag b t = modify (\e -> e {eBVars    = M.insert b t (eBVars e)}) >> return t
+updVarTag  s t = modify (\e -> e {eVars     = M.insert s t (eVars   e)}) >> return t
+updBVarTag b t = modify (\e -> e {eBVars    = M.insert b t (eBVars  e)}) >> return t
 updFields    t = modify (\e -> e {eFields   = t})    >> return t
-updArrs        = modify (\e -> e {eArrays   = True}) >> return GLOBAL
+updArr     s   = modify (\e -> e {eArrays   = S.insert s   (eArrays e)}) >> return GLOBAL
 updFunCalls    = modify (\e -> e {eFunCalls = True}) >> return GLOBAL
 updRange       = modify (\e -> e {eRanges   = True}) >> return GLOBAL
 updFlow        = modify (\e -> e {eFlow     = True})
@@ -130,11 +130,11 @@ trAsgn Set (VariableRef s) rhs = traceE rhs >>= updVarTag s
 trAsgn _   (VariableRef s) rhs = cmb' (varTag s) (traceE rhs) >>= updVarTag s
 trAsgn _   (BuiltInVar  b) rhs = updBVarTag b GLOBAL
 trAsgn _   (FieldRef _)    rhs = cmb' (gets eFields) (traceE rhs) >>= updFields 
-trAsgn _   (ArrayRef _ _)  rhs = updArrs 
+trAsgn _   (ArrayRef s _)  rhs = updArr s 
 
 trMod (VariableRef s) = varTag s >>= \t -> if t == UNDEF then updVarTag s GLOBAL else return t
 trMod (FieldRef i)    = gets eFields
-trMod (ArrayRef _ _)  = updArrs
+trMod (ArrayRef s _)  = updArr s
 trMod (BuiltInVar b)  = updBVarTag b GLOBAL
 
 traceE :: Expression -> Tracer Tag
@@ -142,7 +142,7 @@ traceE (Arith _ lhs rhs)      = cmb' (traceE lhs) (traceE rhs)
 traceE (Const _)              = return LOCAL
 traceE (FieldRef _)           = gets eFields
 traceE (VariableRef s)        = trVarRead s
-traceE (ArrayRef _ _)         = updArrs
+traceE (ArrayRef s _)         = updArr s
 traceE (BuiltInVar b)         = bvarTag b
 traceE (Assignment m p v)     = trAsgn m p v
 traceE (Incr _ p)             = trMod p 
@@ -198,67 +198,73 @@ awkPure s =  noGlobalVars && noBVarsModified && noArrays
    where 
      noGlobalVars    = isNothing $ find ((== GLOBAL) . snd) $ M.toList $ eVars  efs 
      noBVarsModified = all              ((== LOCAL)  . snd) $ M.toList $ eBVars efs
-     noArrays        = not $ eArrays   efs
-     noFunCalls      = not $ eFunCalls efs 
-     noRangePatterns = not $ eRanges   efs
-     noControlFlow   = not $ eFlow     efs
+     noArrays        = S.null $ eArrays   efs
+     noFunCalls      = not    $ eFunCalls efs 
+     noRangePatterns = not    $ eRanges   efs
+     noControlFlow   = not    $ eFlow     efs
 
-     efs = analyze $ procUnits s
+     efs = analyze s
 
 awkPrepare :: AwkSource -> IO AwkSource
 awkPrepare src = do
    let efs = analyze src
-   m <- liftM M.fromList $ mapM mkRef (map fst $ M.toList $ eVars efs)
-   return $ runRewrite (mapM putRefsTL src) m
- where mkRef s = do r <- newIORef (VDouble 0)  
-                    return (s,r)
+   t <- RewriteTable
+        <$> (liftM M.fromList $ mapM (mkRef $ VDouble 0) (map fst $ M.toList $ eVars efs))
+        <*> (liftM M.fromList $ mapM (mkRef $ M.empty)   (S.toList $ eArrays efs))
+   return $ runRewrite (mapM putRefsTL src) t
+ where mkRef a s = (s,) <$> newIORef a
 
 -- TODO: Integrate into Parser (AFAIR Parsec allows it)
-type VarMap = M.Map String (IORef Value)
+data RewriteTable = RewriteTable
+                    { rtVars :: M.Map String (IORef Value)
+                    , rtArrs :: M.Map String (IORef Array)
+                    }
 
-newtype Rewrite a = Rewrite (Reader VarMap a)
-                   deriving (Monad, MonadReader VarMap, Applicative, Functor)
+newtype Rewrite a = Rewrite (Reader RewriteTable a)
+                   deriving (Monad, MonadReader RewriteTable, Applicative, Functor)
 
-runRewrite :: Rewrite a -> (M.Map String (IORef Value)) -> a
-runRewrite (Rewrite r) v = runReader r v
+runRewrite :: Rewrite a -> RewriteTable -> a
+runRewrite (Rewrite r) t = runReader r t
 
 putRefsE :: Expression -> Rewrite Expression
-putRefsE (Arith a lhs rhs)      = Arith <$> pure a <*> putRefsE lhs <*> putRefsE rhs
-putRefsE e@(Const _)            = return e 
-putRefsE (FieldRef e)           = FieldRef <$> putRefsE e
-putRefsE (VariableRef s)        = Variable <$> asks (M.! s)
-putRefsE (ArrayRef s e)         = ArrayRef <$> pure s <*> putRefsE e
-putRefsE e@(BuiltInVar _)       = return e
-putRefsE (Assignment m p v)     = Assignment <$> pure m <*> putRefsE p <*> putRefsE v
-putRefsE (Incr p e)             = Incr <$> pure p <*> putRefsE e
-putRefsE (Decr p e)             = Decr <$> pure p <*> putRefsE e
-putRefsE (Relation r lhs rhs)   = Relation <$> pure r <*> putRefsE lhs <*> putRefsE rhs
-putRefsE (Not e)                = Not <$> putRefsE e
-putRefsE (Neg e)                = Neg <$> putRefsE e
-putRefsE (Id e)                 = Id  <$> putRefsE e
-putRefsE (In v@(VariableRef s) a) = In <$> putRefsE v <*> pure a
-putRefsE (Logic l lhs rhs)      = Logic <$> pure l <*> putRefsE lhs <*> putRefsE rhs
-putRefsE (Match lhs rhs)        = Match <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (NoMatch lhs rhs)      = NoMatch <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (FunCall s args)       = FunCall <$> pure s <*> mapM putRefsE args
-putRefsE (InlineIf c t f)       = InlineIf <$> putRefsE  c <*> putRefsE t <*> putRefsE f
+putRefsE (Arith a lhs rhs)        = Arith      <$> pure a <*> putRefsE lhs <*> putRefsE rhs
+putRefsE e@(Const _)              = return e   
+putRefsE (FieldRef e)             = FieldRef   <$> putRefsE e
+putRefsE (VariableRef s)          = Variable   <$> asks ((M.! s) . rtVars)
+putRefsE (ArrayRef s e)           = Array      <$> asks ((M.! s) . rtArrs) <*> putRefsE e
+putRefsE e@(BuiltInVar _)         = return e
+putRefsE (Assignment m p v)       = Assignment <$> pure m <*> putRefsE p <*> putRefsE v
+putRefsE (Incr p e)               = Incr       <$> pure p <*> putRefsE e
+putRefsE (Decr p e)               = Decr       <$> pure p <*> putRefsE e
+putRefsE (Relation r lhs rhs)     = Relation   <$> pure r <*> putRefsE lhs <*> putRefsE rhs
+putRefsE (Not e)                  = Not        <$> putRefsE e
+putRefsE (Neg e)                  = Neg        <$> putRefsE e
+putRefsE (Id e)                   = Id         <$> putRefsE e
+putRefsE (In v@(VariableRef s) a) = In'        <$> putRefsE v <*> asks ((M.! s) . rtArrs)
+putRefsE (Logic l lhs rhs)        = Logic      <$> pure l <*> putRefsE lhs <*> putRefsE rhs
+putRefsE (Match lhs rhs)          = Match      <$> putRefsE lhs <*> putRefsE rhs
+putRefsE (NoMatch lhs rhs)        = NoMatch    <$> putRefsE lhs <*> putRefsE rhs
+putRefsE (FunCall s args)         = FunCall    <$> pure s <*> mapM putRefsE args
+putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c <*> putRefsE t <*> putRefsE f
 
 putRefsS :: Statement -> Rewrite Statement
-putRefsS (Expression e)         = Expression <$> putRefsE e
-putRefsS (Block ss)             = Block <$> mapM putRefsS ss
-putRefsS (IF e s ms)            = IF <$> putRefsE e <*> putRefsS s <*> msrefs ms
-putRefsS (WHILE e s)            = WHILE <$> putRefsE e <*> putRefsS s
-putRefsS (FOR mi mc ms s)       = FOR <$> mrefs mi <*> mrefs mc <*> mrefs ms <*> putRefsS s
-putRefsS (FOREACH e a s)        = FOREACH <$> putRefsE e <*> pure a <*> putRefsS s
-putRefsS (DO s e)               = DO <$> putRefsS s <*> putRefsE e
-putRefsS (PRINT es)             = PRINT <$> mapM putRefsE es
-putRefsS (EXIT me)              = EXIT <$> mrefs me
-putRefsS (BREAK)                = return BREAK
-putRefsS (CONT)                 = return CONT
-putRefsS (NEXT)                 = return NEXT
-putRefsS (NOP)                  = return NOP
-putRefsS (DELETE e)             = DELETE <$> putRefsE e
-putRefsS (RETURN me)            = RETURN <$> mrefs me
+putRefsS (Expression e)           = Expression <$> putRefsE e
+putRefsS (Block ss)               = Block      <$> mapM putRefsS ss
+putRefsS (IF e s ms)              = IF         <$> putRefsE e <*> putRefsS s <*> msrefs ms
+putRefsS (WHILE e s)              = WHILE      <$> putRefsE e <*> putRefsS s
+putRefsS (FOR mi mc ms s)         = FOR        <$> mrefs mi <*> mrefs mc <*> mrefs ms
+                                               <*> putRefsS s
+putRefsS (FOREACH e a s)          = FOREACH    <$> putRefsE e <*> pure a <*> putRefsS s
+putRefsS (DO s e)                 = DO         <$> putRefsS s <*> putRefsE e
+putRefsS (PRINT es)               = PRINT      <$> mapM putRefsE es
+putRefsS (EXIT me)                = EXIT       <$> mrefs me
+putRefsS (BREAK)                  = return BREAK
+putRefsS (CONT)                   = return CONT
+putRefsS (NEXT)                   = return NEXT
+putRefsS (NOP)                    = return NOP
+putRefsS (DELETE (VariableRef s)) = DELARR <$> asks ((M.! s) . rtArrs)
+putRefsS (DELETE (ArrayRef s e))  = DELELM <$> asks ((M.! s) . rtArrs) <*> putRefsE e
+putRefsS (RETURN me)              = RETURN <$> mrefs me
 
 putRefsP :: Pattern -> Rewrite Pattern
 putRefsP (EXPR e)               = EXPR <$> putRefsE e

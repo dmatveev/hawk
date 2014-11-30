@@ -19,6 +19,7 @@ data Expression = Arith ArithOp Expression Expression
                 | VariableRef String
                 | Variable (IORef Value) 
                 | ArrayRef String Expression
+                | Array (IORef Array) Expression
                 | BuiltInVar BVar
                 | Assignment ArithOp Expression Expression
                 | Incr Notation Expression
@@ -29,6 +30,7 @@ data Expression = Arith ArithOp Expression Expression
                 | Id Expression
                 | Concat Expression Expression
                 | In Expression Expression
+                | In' Expression (IORef Array)
                 | Logic LogOp Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
@@ -50,6 +52,8 @@ data Statement = Expression Expression
                | EXIT (Maybe Expression)
                | NOP
                | DELETE Expression
+               | DELARR (IORef Array)
+               | DELELM (IORef Array) Expression
                | RETURN (Maybe Expression)
                  deriving (Eq, Show)
 

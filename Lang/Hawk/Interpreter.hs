@@ -33,7 +33,6 @@ import Lang.Hawk.Runtime
 
 data HawkContext = HawkContext
                  { hcFields   :: (IM.IntMap Value)
-                 , hcArrays   :: !(M.Map (String, String) Value)
 
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
@@ -69,7 +68,6 @@ m *!! k = IM.findWithDefault (VDouble 0) k m
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcFields   = IM.empty
-                 , hcArrays   = M.empty
 
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
@@ -117,7 +115,7 @@ eval (FieldRef    e)                 = undefined
 -- eval (VariableRef s)                 = evalVariableRef s
 eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
 eval (BuiltInVar  s)                 = evalBVariableRef s 
-eval (ArrayRef    s e)               = evalArrRef s e
+eval (ArrayRef    s e)               = undefined
 eval (Incr n f@(FieldRef      e))    = undefined -- incrField n f
 eval (Incr n v@(Variable    ref))    = undefined
 eval (Incr n a@(ArrayRef    s e))    = undefined
@@ -128,7 +126,7 @@ eval (Relation op le re)             = undefined
 eval (Not e)                         = undefined
 eval (Neg e)                         = undefined
 eval (Concat _ _ )                   = unsup "Concatenations"
-eval (In s (VariableRef arr))        = evalArrTest s arr
+eval (In s (VariableRef arr))        = undefined
 eval (In _ _)                        = fail $ "Incorrect membership test syntax"
 eval (Logic op le re)                = undefined
 eval (Match s re)                    = undefined
@@ -197,14 +195,14 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
-assignToArr op arr ref val = do
-   oldArrs <- gets hcArrays
-   subscr  <- liftM toString $ eval ref
-   let index     = (arr, B.unpack subscr)
-       newValue  = calcArith (oldArrs *! index) op val
-       newArrays = M.insert index newValue oldArrs
-   modify $ (\s -> s { hcArrays = newArrays })
-   return $! newValue
+-- assignToArr op arr ref val = do
+--    oldArrs <- gets hcArrays
+--    subscr  <- liftM toString $ eval ref
+--    let index     = (arr, B.unpack subscr)
+--        newValue  = calcArith (oldArrs *! index) op val
+--        newArrays = M.insert index newValue oldArrs
+--    modify $ (\s -> s { hcArrays = newArrays })
+--    return $! newValue
 
 -- Execute a statement
 exec = undefined
@@ -246,18 +244,20 @@ modBVar RSTART   f = modify $ \s -> s { hcRSTART  = f (hcRSTART   s)}
 modBVar SUBSEP   f = modify $ \s -> s { hcSUBSEP  = f (hcSUBSEP   s)}
 
 
-evalArrRef s e = do
-     idx <- liftM toString $! eval e
-     ars <- gets hcArrays
-     return $! ars *! (s, B.unpack idx)
+-- evalArrRef s e = do
+--      idx <- liftM toString $! eval e
+--      ars <- gets hcArrays
+--      return $! ars *! (s, B.unpack idx)
+
+
 
 -- In a membership test, array name is parsed as an ordinary variable reference.
 -- TODO: Check in grammar
-evalArrTest s arr = do
-     arrs   <- gets hcArrays
-     subscr <- liftM toString $ eval s
-     return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
-  where test b = if b then 1 else 0
+-- evalArrTest s arr = do
+--      arrs   <- gets hcArrays
+--      subscr <- liftM toString $ eval s
+--      return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
+--   where test b = if b then 1 else 0
 
 evalSRand vss = do
      g <- case vss of
@@ -281,22 +281,22 @@ evalSplitVar vs a vfs = do
      evalSplit vs fs a
 
 evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
-evalSplit vs fs arr = do
-   s <- liftM toString $ eval vs
-   let ss = s `splitWithSep` fs
-       is = [1, 2..]
-   ars <- gets hcArrays
-   let -- at first, clear the array from its previous contents
-       -- TODO: very slow, when we have all arrays in a single Data.Map
-       ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
-       -- Form a new array containing extracted values
-       keys  = map (arr,)  $ (map show is)
-       strs  = map valstr  $ ss
-       res   = M.fromList $ zip keys strs
-       -- Put our new values then
-       ars'' = M.union ars' res
-   modify $ (\s -> s { hcArrays = ars'' })
-   return $! VDouble $ fromIntegral $ length ss
+evalSplit vs fs arr = undefined
+   -- s <- liftM toString $ eval vs
+   -- let ss = s `splitWithSep` fs
+   --     is = [1, 2..]
+   -- ars <- gets hcArrays
+   -- let -- at first, clear the array from its previous contents
+   --     -- TODO: very slow, when we have all arrays in a single Data.Map
+   --     ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
+   --     -- Form a new array containing extracted values
+   --     keys  = map (arr,)  $ (map show is)
+   --     strs  = map valstr  $ ss
+   --     res   = M.fromList $ zip keys strs
+   --     -- Put our new values then
+   --     ars'' = M.union ars' res
+   -- modify $ (\s -> s { hcArrays = ars'' })
+   -- return $! VDouble $ fromIntegral $ length ss
 
 evalSubstr  vs vp = calcSubstr <$> eval vs <*> eval vp
 evalSubstr2 vs vp vn = calcSubstr2 <$> eval vs <*> eval vp <*> eval vn
@@ -384,12 +384,3 @@ evalSub vr vs = do
 -- execRET k me = case me of
 --       Nothing   -> (kRet k) Nothing
 --       Just expr -> eval expr >>= (kRet k . Just)
-
-execDEL e = case e of
-    (ArrayRef arr idx) -> do
-       oldArrs <- gets hcArrays
-       subscr  <- liftM toString $ eval idx
-       let index = (arr, B.unpack subscr)
-       modify $ \s -> s {hcArrays = M.delete index oldArrs}
-       return ()
-    otherwise -> fail $ "Syntax error: delete element"
