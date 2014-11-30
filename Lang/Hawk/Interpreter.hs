@@ -61,13 +61,6 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-(*!) :: Ord k => M.Map k Value -> k -> Value
-m *! k = M.findWithDefault (VDouble 0) k m
-
-(*!!) :: IM.IntMap Value -> Int -> Value
-m *!! k = IM.findWithDefault (VDouble 0) k m
-
-
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcFields   = IM.empty
@@ -107,36 +100,20 @@ newtype Interpreter a = Interpreter (StateT HawkContext IO a)
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = execStateT stt c
 
+
+(*!) :: Ord k => M.Map k Value -> k -> Value
+m *! k = M.findWithDefault (VDouble 0) k m
+
+(*!!) :: IM.IntMap Value -> Int -> Value
+m *!! k = IM.findWithDefault (VDouble 0) k m
+
+
 unsup s = fail $ s ++ " are not yet supported"
 
 
 -- Evaluate an expression, return the result
 eval :: Expression -> Interpreter Value
-eval (Arith op le re)                = undefined
-eval (Const (LitNumeric i))          = return $! VDouble i
-eval (Const (LitStr     s))          = return $! valstr $ B.pack s
-eval (Const (LitRE      s))          = return $! valstr $ B.pack s
-eval (Id          e)                 = eval e
-eval (FieldRef    e)                 = undefined
--- eval (VariableRef s)                 = evalVariableRef s
-eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
-eval (BuiltInVar  s)                 = evalBVariableRef s 
-eval (ArrayRef    s e)               = undefined
-eval (Incr n f@(FieldRef      e))    = undefined -- incrField n f
-eval (Incr n v@(Variable    ref))    = undefined
-eval (Incr n a@(ArrayRef    s e))    = undefined
-eval (Decr n f@(FieldRef      e))    = undefined -- decrField n f
-eval (Decr n v@(Variable    ref))    = undefined
-eval (Decr n a@(ArrayRef    s e))    = undefined
-eval (Relation op le re)             = undefined
-eval (Not e)                         = undefined
-eval (Neg e)                         = undefined
 eval (Concat _ _ )                   = unsup "Concatenations"
-eval (In s (VariableRef arr))        = undefined
-eval (In _ _)                        = fail $ "Incorrect membership test syntax"
-eval (Logic op le re)                = undefined
-eval (Match s re)                    = undefined
-eval (NoMatch s re)                  = undefined
 eval (FunCall "atan2"  [vy, vx])     = undefined
 eval (FunCall "cos"    [vx])         = proxyFcn cos vx
 eval (FunCall "exp"    [vx])         = proxyFcn exp vx
@@ -158,7 +135,6 @@ eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
 eval (FunCall "sub"    [vr, vs, vt]) = undefined
 eval (FunCall "match"  [vs, vr])     = undefined
 eval (FunCall f args)                = undefined --evalFunCall f args
-eval (Assignment op p v)             = undefined
 
 proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
 proxyFcn f e = do
@@ -201,19 +177,8 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
--- assignToArr op arr ref val = do
---    oldArrs <- gets hcArrays
---    subscr  <- liftM toString $ eval ref
---    let index     = (arr, B.unpack subscr)
---        newValue  = calcArith (oldArrs *! index) op val
---        newArrays = M.insert index newValue oldArrs
---    modify $ (\s -> s { hcArrays = newArrays })
---    return $! newValue
-
 -- Execute a statement
 exec = undefined
--- exec :: KBlock -> Statement -> Interpreter ()
--- exec k f@(FOREACH v@(Variable ref) arr st) = {-# SCC "execFE" #-} execFOREACH k f v ref arr st
 -- exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
 -- exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
 -- exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
@@ -248,22 +213,6 @@ modBVar RLENGTH  f = modify $ \s -> s { hcRLENGTH = f (hcRLENGTH  s)}
 modBVar RS       f = modify $ \s -> s { hcRS      = f (hcRS       s)}
 modBVar RSTART   f = modify $ \s -> s { hcRSTART  = f (hcRSTART   s)}
 modBVar SUBSEP   f = modify $ \s -> s { hcSUBSEP  = f (hcSUBSEP   s)}
-
-
--- evalArrRef s e = do
---      idx <- liftM toString $! eval e
---      ars <- gets hcArrays
---      return $! ars *! (s, B.unpack idx)
-
-
-
--- In a membership test, array name is parsed as an ordinary variable reference.
--- TODO: Check in grammar
--- evalArrTest s arr = do
---      arrs   <- gets hcArrays
---      subscr <- liftM toString $ eval s
---      return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
---   where test b = if b then 1 else 0
 
 evalSRand vss = do
      g <- case vss of
@@ -371,21 +320,6 @@ evalSub vr vs = do
 --   where
 --      func s (Function ss _ _) = s == ss
 --      func s _                 = False
-
--- -- TODO: The order in which the keys will be traversed may be suprising
--- execFOREACH k f v vname arr st = do
---      arrData <- liftM (filter inArray . map fst . M.toList) $ gets hcArrays
---      callCC $ \br -> do
---        let k' = k {kBreak = br}
---            nextFor kk []         = br ()
---            nextFor kk ((_,s):ss) = do
---              assignToRef ModSet vname (valstr $ B.pack s)
---              let kk' = kk {kCont = \_ -> nextFor kk' (tail ss)}
---              seq kk' $ exec kk' st
---              nextFor kk' ss
---        nextFor k' arrData
---        br ()
---    where inArray (a, _) = a == arr
 
 -- execRET k me = case me of
 --       Nothing   -> (kRet k) Nothing
