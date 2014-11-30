@@ -1,9 +1,8 @@
 module Lang.Hawk.Bytecode.Interpreter where
 
 import Data.IORef
-
+import Data.Fixed (mod')
 import Control.Exception
-
 import Control.Monad.State.Strict
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
@@ -14,7 +13,6 @@ import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
 
-import Data.Fixed (mod')
 
 pop   :: Interpreter (Value, [Value])
 pop_  :: Interpreter Value
@@ -62,12 +60,11 @@ bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st
 bc DUP             = stack   >>= \st@(top:_) -> push top st
 bc (PRN n)         = popN_ n >>= prn
 bc DRP             = modify $ \s -> s { hcSTACK = [] }
+bc MATCH           = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
 
 execBC :: [OpCode] -> Interpreter () 
 execBC []          = return ()
-execBC ((JF n):r)  = do (top:st) <- gets hcSTACK
-                        modify $ \s -> s {hcSTACK = st}
-                        if toBool top then execBC r else jmp n
+execBC ((JF n):r)  = pop_    >>= \top -> if toBool top then execBC r else jmp n
 execBC ((JMP n):r) = jmp n
 execBC (op:ops)    = do -- liftIO $ putStrLn $ (show op)
                         bc op
@@ -78,8 +75,7 @@ fref v = do
    let i = toInt v 
    if i == 0
    then gets hcThisLine >>= (return . valstr)
-   else do fs <- gets hcFields
-           return $! fs IM.! i
+   else liftM (*!! i) $ gets hcFields
 
 jmp :: Int -> Interpreter ()
 jmp n = gets hcOPCODES >>= \src -> execBC (drop n src)

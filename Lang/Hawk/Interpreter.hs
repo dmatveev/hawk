@@ -130,10 +130,10 @@ eval (Neg e)                         = evalNeg e
 eval (Concat _ _ )                   = unsup "Concatenations"
 eval (In s (VariableRef arr))        = evalArrTest s arr
 eval (In _ _)                        = fail $ "Incorrect membership test syntax"
-eval (Logic op le re)                = evalLogic op le re
-eval (Match s re)                    = evalMatch s re
-eval (NoMatch s re)                  = evalNoMatch s re
-eval (FunCall "atan2"  [vy, vx])     = evalAtan2 vy vx
+eval (Logic op le re)                = undefined
+eval (Match s re)                    = undefined
+eval (NoMatch s re)                  = undefined
+eval (FunCall "atan2"  [vy, vx])     = undefined
 eval (FunCall "cos"    [vx])         = proxyFcn cos vx
 eval (FunCall "exp"    [vx])         = proxyFcn exp vx
 eval (FunCall "int"    [vx])         = proxyFcn (fromIntegral . truncate) vx
@@ -142,8 +142,8 @@ eval (FunCall "sin"    [vx])         = proxyFcn sin vx
 eval (FunCall "sqrt"   [vx])         = proxyFcn sqrt vx
 eval (FunCall "srand"  vss)          = evalSRand vss
 eval (FunCall "rand"   [])           = evalRand
-eval (FunCall "index"  [vs, vt])     = evalIndex vs vt
-eval (FunCall "length" [vs])         = evalLength vs
+eval (FunCall "index"  [vs, vt])     = undefined
+eval (FunCall "length" [vs])         = undefined
 eval (FunCall "split"  [vs, (VariableRef a)])      = evalSplitFS vs a
 eval (FunCall "split"  [vs, (VariableRef a), vfs]) = evalSplitVar vs a vfs
 eval (FunCall "substr" [vs, vp])     = evalSubstr vs vp
@@ -152,7 +152,7 @@ eval (FunCall "gsub"   [vr, vs])     = evalGSub vr vs
 eval (FunCall "gsub"   [vr, vs, vt]) = evalGSubVar vr vs vt
 eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
 eval (FunCall "sub"    [vr, vs, vt]) = evalSubVar vr vs vt
-eval (FunCall "match"  [vs, vr])     = evalFMatch vs vr
+eval (FunCall "match"  [vs, vr])     = undefined
 eval (FunCall f args)                = undefined --evalFunCall f args
 eval (Assignment op p v)             = evalAssign op p v
 
@@ -331,24 +331,6 @@ evalArrTest s arr = do
      return $! VDouble $ test (M.member (arr,B.unpack subscr) arrs)
   where test b = if b then 1 else 0
 
-evalLogic op le re = calcLogic <$> pure op <*> eval le <*> eval re
-
-evalMatch s re = do
-     l <- liftM toString $! eval s
-     r <- liftM toString $! eval re
-     let rv = if r /= "" && l =~ r then 1.0 else 0.0
-     return $! VDouble rv
-
-evalNoMatch s re = do
-     l <- liftM toString $! eval s
-     r <- liftM toString $! eval re
-     let rv = if r /= "" && l =~ r then 0.0 else 1.0
-     return $! VDouble rv
-
-evalAtan2  vx vy = calcAtan2  <$> eval vy <*> eval vx
-evalIndex  vs vt = calcIndex  <$> eval vs <*> eval vt
-evalLength vs    = calcLength <$> eval vs
-
 evalSRand vss = do
      g <- case vss of
        [vs] -> liftM (mkStdGen . toInt) $! eval vs
@@ -424,11 +406,6 @@ evalSubVar vr vs vt = do
                 (FieldRef ref)     -> undefined -- assignToField ModSet ref result
                 (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
              return $! VDouble 1
-
-evalFMatch vs vr = do
-     (retS, retL) <- calcMatch <$> eval vs <*> eval vr
-     modify $ \s -> s { hcRSTART = retS, hcRLENGTH = retL }
-     return $! retS
 
 -- evalFunCall f args = do
 --      mfcn <- liftM (find (func f)) $ gets hcCode

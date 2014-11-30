@@ -176,10 +176,15 @@ compileSection mp ms = do
    case mp of
      Nothing         -> compileStmt ms
      (Just BEGIN)    -> compileStmt ms
-     (Just (EXPR e)) -> compileE e >> (jf $ compileStmt ms)
+     (Just (EXPR e)) -> compileE  e >> (jf $ compileStmt ms)
+     (Just (RE s))   -> compileRE s >> (jf $ compileStmt ms)
      (Just END)      -> compileStmt ms
      otherwise       -> return ()
   where compileStmt = maybe (op $ PRN 0) compileS
+        compileRE s = do op $ PUSH $ VDouble 0
+                         op $ FIELD
+                         op $ PUSH $ valstr (B.pack s)
+                         op $ MATCH
 
 compile :: AwkSource -> (Bytecode, Bytecode, Bytecode)
 compile src = (cc begins, cc actions, cc ends)

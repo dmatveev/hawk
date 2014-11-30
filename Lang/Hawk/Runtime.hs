@@ -88,6 +88,9 @@ calcLogic op lv rv =
       OR  -> VDouble $! test (l || r)
    where test b = if b then 1 else 0
 
+match :: Value -> Value -> Value
+match vs vr = let (s, r) = (toString vs, toString vr)
+              in VDouble $! if r /= "" && s =~ r then 1 else 0
 
 -- Standard functions
 calcAtan2   y x   = VDouble $! atan2 (toDouble y) (toDouble x)
