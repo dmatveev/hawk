@@ -252,18 +252,10 @@ decrArr n arr@(ArrayRef name ref) = do
 -- Execute a statement
 exec = undefined
 -- exec :: KBlock -> Statement -> Interpreter ()
--- exec _ (Expression e) = {-# SCC "execEXPR"  #-} eval e >> return ()
--- exec k (Block es)     = {-# SCC "execBLOCK" #-} mapM_ (exec k) es
--- exec k (IF c t me)    = {-# SCC "execIF"    #-} execIF k c t me
--- exec k w@(WHILE c s)  = {-# SCC "execWHILE" #-} execWHILE k w c s 
--- exec k (FOR i c st s) = {-# SCC "execFOR"   #-} execFOR k i c st s
--- exec k d@(DO s c)     = {-# SCC "execDO"    #-} execDO k d s c 
 -- exec k f@(FOREACH v@(Variable ref) arr st) = {-# SCC "execFE" #-} execFOREACH k f v ref arr st
--- exec _ (PRINT es)     = {-# SCC "execPRINT" #-} execPRINT es
 -- exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
 -- exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
 -- exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
--- exec _ (NOP)          = {-# SCC "execNOP"   #-} return ()
 -- exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
 
