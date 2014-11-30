@@ -10,23 +10,11 @@ import Text.Regex.PCRE
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 
-calcNewValue oldVal op arg =
-   let l = toDouble oldVal
-       r = toDouble arg
-   in case op of
-      ModSet -> arg
-      ModAdd -> VDouble $! l + r
-      ModSub -> VDouble $! l - r
-      ModMul -> VDouble $! l * r
-      ModDiv -> VDouble $! l / r
-      ModMod -> VDouble $! l `mod'`r
-
-
--- TODO: Merge these functions
 calcArith lval rval op = 
    let l = toDouble lval
        r = toDouble rval
    in VDouble $! case op of
+       Set -> r
        Mul -> l * r
        Div -> l / r
        Add -> l + r

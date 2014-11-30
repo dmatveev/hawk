@@ -119,11 +119,11 @@ eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
 eval (BuiltInVar  s)                 = evalBVariableRef s 
 eval (ArrayRef    s e)               = evalArrRef s e
 eval (Incr n f@(FieldRef      e))    = undefined -- incrField n f
-eval (Incr n v@(Variable    ref))    = incrVar n v
-eval (Incr n a@(ArrayRef    s e))    = incrArr n a
+eval (Incr n v@(Variable    ref))    = undefined
+eval (Incr n a@(ArrayRef    s e))    = undefined
 eval (Decr n f@(FieldRef      e))    = undefined -- decrField n f
-eval (Decr n v@(Variable    ref))    = decrVar n v
-eval (Decr n a@(ArrayRef    s e))    = decrArr n a
+eval (Decr n v@(Variable    ref))    = undefined
+eval (Decr n a@(ArrayRef    s e))    = undefined
 eval (Relation op le re)             = evalCmp op le re
 eval (Not e)                         = evalNot e 
 eval (Neg e)                         = evalNeg e
@@ -149,31 +149,31 @@ eval (FunCall "split"  [vs, (VariableRef a), vfs]) = evalSplitVar vs a vfs
 eval (FunCall "substr" [vs, vp])     = evalSubstr vs vp
 eval (FunCall "substr" [vs, vp, vn]) = evalSubstr2 vs vp vn
 eval (FunCall "gsub"   [vr, vs])     = evalGSub vr vs
-eval (FunCall "gsub"   [vr, vs, vt]) = evalGSubVar vr vs vt
+eval (FunCall "gsub"   [vr, vs, vt]) = undefined
 eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
-eval (FunCall "sub"    [vr, vs, vt]) = evalSubVar vr vs vt
+eval (FunCall "sub"    [vr, vs, vt]) = undefined
 eval (FunCall "match"  [vs, vr])     = undefined
 eval (FunCall f args)                = undefined --evalFunCall f args
-eval (Assignment op p v)             = evalAssign op p v
+eval (Assignment op p v)             = undefined
 
 proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
 proxyFcn f e = do
      d <- liftM toDouble $ eval e
      return $! VDouble $ f d
 
-assignToField :: ModOp -> Value -> Value -> Interpreter ()
+assignToField :: ArithOp -> Value -> Value -> Interpreter ()
 assignToField op vi val = do
      let i = toInt vi
      if i == 0
      then do
           thisLine <- gets hcThisLine
-          let newLine    = calcNewValue (valstr thisLine) op val
+          let newLine    = calcArith (valstr thisLine) val op
               newLineStr = toString newLine
           modify (\s -> s {hcThisLine = newLineStr})
           reconstructThisFields newLineStr
      else do
           oldFields <- gets hcFields
-          let newValue  = calcNewValue (oldFields *!! i) op val
+          let newValue  = calcArith (oldFields *!! i) val op
               newFields = IM.insert i newValue oldFields
           modify (\s -> s { hcFields = newFields })
           reconstructThisLine
@@ -197,57 +197,14 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
--- TODO: delete
-assignToRef op ref val = do
-     r <- liftIO $ atomicModifyIORef' ref (\v -> let nv = calcNewValue v op val in (nv, nv))
-     return $! r
-
--- TODO: remove
-assignToBVar op name val = do
-   modBVar name (\oldVal -> calcNewValue oldVal op val)
-   evalBVariableRef name
-
 assignToArr op arr ref val = do
    oldArrs <- gets hcArrays
    subscr  <- liftM toString $ eval ref
    let index     = (arr, B.unpack subscr)
-       newValue  = calcNewValue (oldArrs *! index) op val
+       newValue  = calcArith (oldArrs *! index) op val
        newArrays = M.insert index newValue oldArrs
    modify $ (\s -> s { hcArrays = newArrays })
    return $! newValue
-
-
-ppval :: Double -> Double -> Notation -> Value
-ppval old new Post = VDouble old
-ppval old new Pre  = VDouble new
-
-ppval' old new Post =  old
-ppval' old new Pre  =  new
-
-
--- incrField n fld@(FieldRef e) = do
---    (VDouble d) <- assignToField ModAdd e (VDouble 1.0)
---    return $! ppval (d-1) d n
-
--- decrField n fld@(FieldRef e) = do
---    (VDouble d) <- assignToField ModSub e (VDouble 1.0)
---    return $! ppval (d+1) d n
-
-incrVar n var@(Variable s) = do
-   (VDouble d) <- assignToRef ModAdd s (VDouble 1.0)
-   return $! ppval (d-1) d n
-
-decrVar n var@(Variable s) = do
-   (VDouble d) <- assignToRef ModSub s (VDouble 1.0)
-   return $! ppval (d+1) d n
-
-incrArr n arr@(ArrayRef name ref) = do
-   (VDouble d) <- assignToArr ModAdd name ref (VDouble 1.0)
-   return $! ppval (d-1) d n
-
-decrArr n arr@(ArrayRef name ref) = do
-   (VDouble d) <- assignToArr ModSub name ref (VDouble 1.0)
-   return $! ppval (d+1) d n
 
 -- Execute a statement
 exec = undefined
@@ -371,14 +328,14 @@ evalGSub vr vs = do
      reconstructThisFields str
      return $! VDouble $ fromIntegral m
 
-evalGSubVar vr vs vt = do
-     (m, str) <- calcGSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
-     let vstr = valstr str
-     case vt of
-        (Variable ref)     -> assignToRef   ModSet ref vstr
-        (FieldRef ref)     -> undefined -- assignToField ModSet ref vstr
-        (ArrayRef arr ref) -> assignToArr   ModSet arr ref vstr 
-     return $! VDouble $ fromIntegral m
+-- evalGSubVar vr vs vt = do
+--      (m, str) <- calcGSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
+--      let vstr = valstr str
+--      case vt of
+--         (Variable ref)     -> assignToRef   ModSet ref vstr
+--         (FieldRef ref)     -> undefined -- assignToField ModSet ref vstr
+--         (ArrayRef arr ref) -> assignToArr   ModSet arr ref vstr 
+--      return $! VDouble $ fromIntegral m
 
 evalSub vr vs = do
      (n, str) <- calcSub <$> eval vr <*> eval vs <*> gets hcThisLine
@@ -388,16 +345,16 @@ evalSub vr vs = do
              reconstructThisFields str
              return $! VDouble 1
 
-evalSubVar vr vs vt = do
-     (n, str) <- calcSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
-     if n == 0
-     then do return $! VDouble 0
-     else do let result = valstr str
-             case vt of
-                (Variable ref)     -> assignToRef   ModSet ref result
-                (FieldRef ref)     -> undefined -- assignToField ModSet ref result
-                (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
-             return $! VDouble 1
+-- evalSubVar vr vs vt = do
+--      (n, str) <- calcSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
+--      if n == 0
+--      then do return $! VDouble 0
+--      else do let result = valstr str
+--              case vt of
+--                 (Variable ref)     -> assignToRef   ModSet ref result
+--                 (FieldRef ref)     -> undefined -- assignToField ModSet ref result
+--                 (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
+--              return $! VDouble 1
 
 -- evalFunCall f args = do
 --      mfcn <- liftM (find (func f)) $ gets hcCode
@@ -430,14 +387,14 @@ evalSubVar vr vs vt = do
 --      func s (Function ss _ _) = s == ss
 --      func s _                 = False
 
-evalAssign op p v = do
-     val <- eval v
-     case p of
-       (FieldRef ref)     -> undefined -- assignToField op ref  val
-       (Variable ref)     -> assignToRef   op ref val
-       (ArrayRef arr ref) -> assignToArr   op arr ref val
-       (BuiltInVar name)  -> assignToBVar  op name val
-       otherwise -> fail "Only to-field and to-variable assignments are supported"
+-- evalAssign op p v = do
+--      val <- eval v
+--      case p of
+--        (FieldRef ref)     -> undefined -- assignToField op ref  val
+--        (Variable ref)     -> undefined -- assignToRef   op ref val
+--        (ArrayRef arr ref) -> assignToArr   op arr ref val
+--        (BuiltInVar name)  -> assignToBVar  op name val
+--        otherwise -> fail "Only to-field and to-variable assignments are supported"
 
 -- -- TODO: The order in which the keys will be traversed may be suprising
 -- execFOREACH k f v vname arr st = do

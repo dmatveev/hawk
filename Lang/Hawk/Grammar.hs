@@ -116,8 +116,8 @@ table = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
         , [binary "in" In AssocRight]
         , [logic "&&" AND]
         , [logic "||" OR]
-        , [ asgn "=" ModSet, asgn "+=" ModAdd, asgn "-=" ModSub
-          , asgn "*=" ModMul, asgn  "/=" ModDiv, asgn "%=" ModMod, asgn "^=" ModPow]
+        , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
+          , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
         ]
 
 rel   s o = binary s (Relation   o) AssocLeft

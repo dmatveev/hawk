@@ -102,30 +102,33 @@ compileE (Match l r)        = compileE l >> compileE r >> op MATCH
 compileE (NoMatch l r)      = compileE l >> compileE r >> op MATCH >> op NOT
 compileE (FunCall s es)     = mapM_ compileE es >> op (CALL s)
 
-compileASGN ModSet (Variable r  ) e = compileE e >> op (VSET r)
-compileASGN ModSet (ArrayRef a i) e = compileE e >> compileE i >> op (ASET a)
-compileASGN ModSet (FieldRef i  ) e = compileE e >> compileE i >> op FSET
-compileASGN ModSet (BuiltInVar b) e = compileE e >> op (BSET b)
+compileASGN m p e =
+   if m == Set
+   then compileE e >> compileSET p
+   else compileMOD' Pre m p (compileE e)
 
-compileINCR Pre (Variable r) = do
-   op $ PUSH (VDouble 1)
-   op $ MVAR ModAdd r
-   op $ VAR r
+compileSET (Variable r  ) = op (VSET r)
+compileSET (ArrayRef a i) = compileE i >> op (ASET a)
+compileSET (FieldRef i  ) = compileE i >> op FSET
+compileSET (BuiltInVar b) = op (BSET b)
 
-compileINCR Post (Variable r) = do
-   op $ VAR r
-   op $ PUSH (VDouble 1)
-   op $ MVAR ModAdd r
+compileMOD m (Variable r  ) = op (VMOD m r)
+compileMOD m (ArrayRef a i) = compileE i >> op (AMOD m a)
+compileMOD m (FieldRef i  ) = compileE i >> op (FMOD m)
+compileMOD m (BuiltInVar b) = op (BMOD m b)
 
-compileDECR Pre (Variable r) = do
-   op $ PUSH (VDouble 1)
-   op $ MVAR ModSub r
-   op $ VAR r
+compileMOD' Pre m p ce = do
+  ce             -- compile the expression, put its value on stack
+  compileMOD m p -- modify the <var/bvar/field/arr> using this value
+  compileE p     -- read <var/bvar/field/arr> - put new value on stack
 
-compileDECT Post (Variable r) = do
-   op $ VAR r
-   op $ PUSH (VDouble 1)
-   op $ MVAR ModSub r
+compileMOD' Post m p ce = do
+  compileE p     -- read <var/bvar/field/arr> - put new value on stack
+  ce             -- compile the expression, put its value on stack
+  compileMOD m p -- modify the <var/bvar/field/arr>, stack top now is the old value
+
+compileINCR n p = compileMOD' n Add p $ op $ PUSH (VDouble 1)
+compileDECR n p = compileMOD' n Sub p $ op $ PUSH (VDouble 1)
 
 compileS :: Statement -> Compiler ()
 compileS (Expression e)    = compileE e

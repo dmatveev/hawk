@@ -126,11 +126,11 @@ trBlock f = do current <- gets eDepth
                f
                modify $ \s -> s { eDepth = current }
 
-trAsgn ModSet (VariableRef s) rhs = traceE rhs >>= updVarTag s
-trAsgn _      (VariableRef s) rhs = cmb' (varTag s) (traceE rhs) >>= updVarTag s
-trAsgn _      (BuiltInVar  b) rhs = updBVarTag b GLOBAL
-trAsgn _      (FieldRef _)    rhs = cmb' (gets eFields) (traceE rhs) >>= updFields 
-trAsgn _      (ArrayRef _ _)  rhs = updArrs 
+trAsgn Set (VariableRef s) rhs = traceE rhs >>= updVarTag s
+trAsgn _   (VariableRef s) rhs = cmb' (varTag s) (traceE rhs) >>= updVarTag s
+trAsgn _   (BuiltInVar  b) rhs = updBVarTag b GLOBAL
+trAsgn _   (FieldRef _)    rhs = cmb' (gets eFields) (traceE rhs) >>= updFields 
+trAsgn _   (ArrayRef _ _)  rhs = updArrs 
 
 trMod (VariableRef s) = varTag s >>= \t -> if t == UNDEF then updVarTag s GLOBAL else return t
 trMod (FieldRef i)    = gets eFields

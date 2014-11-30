@@ -45,15 +45,17 @@ stack     = gets hcSTACK
 
 bc :: OpCode -> Interpreter ()
 bc (ARITH o)       = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
-bc (MVAR m r)      = pop_    >>= \t -> liftIO $ modifyIORef' r $ \v -> calcNewValue v m t
 bc (PUSH v)        = push_   v
 bc POP             = pop_    >>  return ()
 bc FIELD           = pop     >>= \(top,st) -> fref top >>= flip push st
-bc FSET            = pop2_   >>= \(i,v) -> assignToField ModSet i v
+bc FSET            = pop2_   >>= \(i,v) -> assignToField Set i v
+bc (FMOD o)        = pop2_   >>= \(i,v) -> assignToField o   i v
 bc (VAR r)         = push_   =<< (liftIO $! readIORef r)
 bc (VSET r)        = pop_    >>= \top -> liftIO $ writeIORef r top
+bc (VMOD o r)      = pop_    >>= \top -> liftIO $ modifyIORef' r (\v -> calcArith v top o)
 bc (BVAR b)        = push_   =<< evalBVariableRef b
-bc (BSET b)        = pop_    >>= \top -> modBVar b (\old -> calcNewValue old ModSet top)
+bc (BSET b)        = pop_    >>= \top -> modBVar b (const top)
+bc (BMOD o b)      = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
 bc (CMP o)         = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
 bc (LGC o)         = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
 bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st

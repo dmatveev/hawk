@@ -11,13 +11,16 @@ data OpCode = ARITH ArithOp
             | POP
             | FIELD
             | FSET
+            | FMOD ArithOp
             | VAR (IORef Value)
-            | MVAR ModOp (IORef Value)
             | VSET (IORef Value)
+            | VMOD ArithOp (IORef Value)
             | ARR String
             | ASET String
+            | AMOD ArithOp String
             | BVAR BVar
             | BSET BVar
+            | BMOD ArithOp BVar
             | CMP CmpOp
             | NOT
             | NEG

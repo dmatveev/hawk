@@ -1,10 +1,7 @@
 module Lang.Hawk.Basic where
 
-data ArithOp = Add | Sub | Mul | Div | Mod | Pow
+data ArithOp = Set | Add | Sub | Mul | Div | Mod | Pow
                deriving (Eq, Show)
-
-data ModOp = ModSet | ModAdd | ModSub | ModMul | ModDiv | ModMod | ModPow
-             deriving (Eq, Show)
 
 data CmpOp = CmpEQ | CmpNE | CmpGT | CmpGE | CmpLT | CmpLE
              deriving (Eq, Show)
