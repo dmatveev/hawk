@@ -16,45 +16,51 @@ import Lang.Hawk.Runtime
 
 import Data.Fixed (mod')
 
+pop   :: Interpreter (Value, [Value])
+pop_  :: Interpreter Value
+pop2  :: Interpreter (Value, Value, [Value])
+pop2_ :: Interpreter (Value, Value)
+popN  :: Int -> Interpreter ([Value], [Value])
+popN_ :: Int -> Interpreter [Value]
+push  :: Value -> [Value] -> Interpreter ()
+push_ :: Value -> Interpreter ()
+stack :: Interpreter [Value]
+{-# INLINE pop   #-}
+{-# INLINE pop_  #-}
+{-# INLINE pop2  #-}
+{-# INLINE pop2_ #-}
+{-# INLINE popN  #-}
+{-# INLINE popN_ #-}
+{-# INLINE push  #-}
+{-# INLINE push_ #-}
+{-# INLINE stack #-}
+
+pop       = stack  >>= \(top:st) -> return (top, st)
+pop_      = pop    >>= \(top,st) -> modify (\s -> s { hcSTACK = st }) >> return top
+pop2      = stack  >>= \(r:l:st) -> return (r,l,st)
+pop2_     = pop2   >>= \(r,l,st) -> modify (\s -> s { hcSTACK = st }) >> return (r,l)
+popN n    = stack  >>= \st -> return $ splitAt n st
+popN_ n   = popN n >>= \(vs,rs) -> modify (\s -> s { hcSTACK = rs }) >> return vs
+push v st = modify $ \s -> s { hcSTACK = seq v v:st }
+push_ v   = modify $ \s -> s { hcSTACK = seq v v:(hcSTACK s) }
+stack     = gets hcSTACK
+
 bc :: OpCode -> Interpreter ()
-bc (ARITH o)       = do (rhs:lhs:st) <- gets hcSTACK
-                        let v = calcArith lhs rhs o
-                        modify $ \s -> s {hcSTACK = seq v (v:st)}
-bc (MVAR m r)      = do (top:st) <- gets hcSTACK
-                        liftIO $ modifyIORef' r $ \v -> calcNewValue v m top
-                        modify $ \s -> s {hcSTACK = st}
-bc (PUSH v)        = modify $ \s -> s {hcSTACK = v:(hcSTACK s)   }
-bc POP             = modify $ \s -> s {hcSTACK = tail(hcSTACK s) }
-bc FIELD           = do (top:st) <- gets hcSTACK
-                        f <- fref top
-                        modify $ \s -> s {hcSTACK = f:st}
-bc FSET            = do (i:v:st) <- gets hcSTACK
-                        assignToField ModSet i v
-                        modify $ \s -> s {hcSTACK = st}
-bc (VAR r)         = do v <- liftIO $! readIORef r
-                        modify $ \s -> s {hcSTACK = v:(hcSTACK s) }
-bc (VSET r)        = do (top:st) <- gets hcSTACK
-                        liftIO $ writeIORef r top
-                        modify $ \s -> s {hcSTACK = st}
-bc (BVAR b)        = do v <- evalBVariableRef b
-                        modify $ \s -> s {hcSTACK = v:(hcSTACK s) }
-bc (BSET b)        = do (top:st) <- gets hcSTACK
-                        modBVar b (\oldVal -> calcNewValue oldVal ModSet top)
-                        modify $ \s -> s {hcSTACK = st}
-bc (CMP o)         = do (rv:lv:st) <- gets hcSTACK
-                        let v = cmpValues lv rv o
-                        modify $ \s -> s {hcSTACK = v:st }
-bc (LGC o)         = do (rv:lv:st) <- gets hcSTACK
-                        let v = calcLogic o lv rv
-                        modify $ \s -> s {hcSTACK = v:st }
-bc (CALL "length") = do (top:st) <- gets hcSTACK
-                        let v = VDouble $! fromIntegral $ B.length $ toString top
-                        modify $ \s -> s {hcSTACK = v:st}
-bc DUP             = do st@(top:_) <- gets hcSTACK
-                        modify $ \s -> s {hcSTACK = top:st}
-bc (PRN n)         = do (vs,rs) <- liftM (splitAt n) $ gets hcSTACK
-                        prn vs
-                        modify $ \s -> s {hcSTACK = rs}
+bc (ARITH o)       = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
+bc (MVAR m r)      = pop_    >>= \t -> liftIO $ modifyIORef' r $ \v -> calcNewValue v m t
+bc (PUSH v)        = push_   v
+bc POP             = pop_    >>  return ()
+bc FIELD           = pop     >>= \(top,st) -> fref top >>= flip push st
+bc FSET            = pop2_   >>= \(i,v) -> assignToField ModSet i v
+bc (VAR r)         = push_   =<< (liftIO $! readIORef r)
+bc (VSET r)        = pop_    >>= \top -> liftIO $ writeIORef r top
+bc (BVAR b)        = push_   =<< evalBVariableRef b
+bc (BSET b)        = pop_    >>= \top -> modBVar b (\old -> calcNewValue old ModSet top)
+bc (CMP o)         = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
+bc (LGC o)         = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
+bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st
+bc DUP             = stack   >>= \st@(top:_) -> push top st
+bc (PRN n)         = popN_ n >>= prn
 bc DRP             = modify $ \s -> s { hcSTACK = [] }
 
 execBC :: [OpCode] -> Interpreter () 

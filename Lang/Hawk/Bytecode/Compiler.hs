@@ -99,7 +99,7 @@ compileE (Neg e)            = compileE e >> op NEG
 compileE (Id e)             = compileE e 
 compileE (Logic o l r)      = compileE l >> compileE r >> op (LGC o) -- TODO: eval.order!
 compileE (Match l r)        = compileE l >> compileE r >> op MATCH
-compileE (NoMatch l r)      = compileE l >> compileE r >> op NOMATCH
+compileE (NoMatch l r)      = compileE l >> compileE r >> op MATCH >> op NOT
 compileE (FunCall s es)     = mapM_ compileE es >> op (CALL s)
 
 compileASGN ModSet (Variable r  ) e = compileE e >> op (VSET r)
@@ -143,11 +143,6 @@ compileIF t th el = do
    jf $ compileS th
    maybe (return ()) compileS el
 
-compileWHILE e s = loop $ do
-   compileE e
-   loopCheck
-   compileS s
-
 compileFOR mi mc ms st = do
    maybe (return ()) compileE mi
    loop $ do
@@ -156,11 +151,8 @@ compileFOR mi mc ms st = do
       maybe (return ()) compileE ms
   where compCheck c = compileE c >> loopCheck
 
-
-compileDO s e = loop $ do
-   compileS s
-   compileE e
-   loopCheck
+compileWHILE e s = loop $ compileE e >> loopCheck >> compileS s
+compileDO    s e = loop $ compileS s >> compileE e >> loopCheck
 
 loopCheck = gets csLS >>= maybe (return ()) putCheck
   where putCheck ls = do
@@ -175,7 +167,7 @@ loopBreak = gets csLS >>= maybe (return ()) putBreak
 loopCont = gets csLS >>= maybe (return()) putCont
   where putCont ls = do
           i <- nop
-          modify $ \s -> s { csLS = Just (ls { lsConts = i:(lsConts ls) }) }
+          modify $ \s -> s { csLS = Just (ls { lsConts  = i:(lsConts  ls) }) }
 
 compileTL :: TopLevel -> Compiler ()
 compileTL (Section mp ms) = compileSection mp ms

@@ -23,7 +23,6 @@ data OpCode = ARITH ArithOp
             | NEG
             | LGC LogOp
             | MATCH
-            | NOMATCH
             | CALL String
 
             | DUP
