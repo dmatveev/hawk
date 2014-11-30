@@ -108,12 +108,12 @@ unsup s = fail $ s ++ " are not yet supported"
 
 -- Evaluate an expression, return the result
 eval :: Expression -> Interpreter Value
-eval (Arith op le re)                = evalArith op le re
+eval (Arith op le re)                = undefined
 eval (Const (LitNumeric i))          = return $! VDouble i
 eval (Const (LitStr     s))          = return $! valstr $ B.pack s
 eval (Const (LitRE      s))          = return $! valstr $ B.pack s
 eval (Id          e)                 = eval e
-eval (FieldRef    e)                 = evalFieldRef e
+eval (FieldRef    e)                 = undefined
 -- eval (VariableRef s)                 = evalVariableRef s
 eval (Variable ref)                  = (liftIO $ readIORef ref) >>= (return $!)
 eval (BuiltInVar  s)                 = evalBVariableRef s 
@@ -124,9 +124,9 @@ eval (Incr n a@(ArrayRef    s e))    = undefined
 eval (Decr n f@(FieldRef      e))    = undefined -- decrField n f
 eval (Decr n v@(Variable    ref))    = undefined
 eval (Decr n a@(ArrayRef    s e))    = undefined
-eval (Relation op le re)             = evalCmp op le re
-eval (Not e)                         = evalNot e 
-eval (Neg e)                         = evalNeg e
+eval (Relation op le re)             = undefined
+eval (Not e)                         = undefined
+eval (Neg e)                         = undefined
 eval (Concat _ _ )                   = unsup "Concatenations"
 eval (In s (VariableRef arr))        = evalArrTest s arr
 eval (In _ _)                        = fail $ "Incorrect membership test syntax"
@@ -215,16 +215,6 @@ exec = undefined
 -- exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
 -- exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
-
-evalArith op le re = calcArith <$> eval le <*> eval re <*> pure op
-
-evalFieldRef e = do
-     i <- liftM toInt $ eval e
-     if i == 0
-     then gets hcThisLine >>= (return . valstr)
-     else do fs <- gets hcFields
-             return $! fs IM.! i
-
 evalBVariableRef ARGC     = gets hcARGC    
 evalBVariableRef ARGV     = gets hcARGV    
 evalBVariableRef FILENAME = gets hcFILENAME
@@ -260,17 +250,6 @@ evalArrRef s e = do
      idx <- liftM toString $! eval e
      ars <- gets hcArrays
      return $! ars *! (s, B.unpack idx)
-
-evalCmp op le re = cmpValues <$> eval le <*> eval re <*> pure op
-
-evalNot e = do
-     b <- liftM toBool $! eval e
-     return $! VDouble (if b then 0.0 else 1.0)
-
-evalNeg e = do
-     d <- liftM toDouble $! eval e
-     return $! VDouble (- d)
-
 
 -- In a membership test, array name is parsed as an ordinary variable reference.
 -- TODO: Check in grammar
@@ -386,15 +365,6 @@ evalSub vr vs = do
 --   where
 --      func s (Function ss _ _) = s == ss
 --      func s _                 = False
-
--- evalAssign op p v = do
---      val <- eval v
---      case p of
---        (FieldRef ref)     -> undefined -- assignToField op ref  val
---        (Variable ref)     -> undefined -- assignToRef   op ref val
---        (ArrayRef arr ref) -> assignToArr   op arr ref val
---        (BuiltInVar name)  -> assignToBVar  op name val
---        otherwise -> fail "Only to-field and to-variable assignments are supported"
 
 -- -- TODO: The order in which the keys will be traversed may be suprising
 -- execFOREACH k f v vname arr st = do

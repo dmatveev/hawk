@@ -52,3 +52,6 @@ toString (VDouble d) =
   where (rs,p) = floatToDigits 10 (abs d)
         nrs = length rs
         sgn = if d >= 0 then "" else "-"
+
+vNot v = VDouble $! if (toBool v) then 0 else 1
+vNeg v = VDouble $! - toDouble v

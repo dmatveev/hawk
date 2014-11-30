@@ -58,6 +58,8 @@ bc (BSET b)        = pop_    >>= \top -> modBVar b (const top)
 bc (BMOD o b)      = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
 bc (CMP o)         = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
 bc (LGC o)         = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
+bc NOT             = pop     >>= \(top,st)   -> push (vNot top) st
+bc NEG             = pop     >>= \(top,st)   -> push (vNeg top) st
 bc (CALL "length") = pop     >>= \(top,st)   -> push (calcLength top) st
 bc DUP             = stack   >>= \st@(top:_) -> push top st
 bc (PRN n)         = popN_ n >>= prn
