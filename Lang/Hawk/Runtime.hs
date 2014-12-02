@@ -2,19 +2,21 @@
 
 module Lang.Hawk.Runtime where
 
+import Control.Monad.Trans
+import Data.IORef
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Map as M
 import Data.Fixed (mod')
-
 import Text.Regex.PCRE
 
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 
+calcArith _    rval Set = rval
 calcArith lval rval op = 
    let l = toDouble lval
        r = toDouble rval
    in VDouble $! case op of
-       Set -> r
        Mul -> l * r
        Div -> l / r
        Add -> l + r
@@ -102,4 +104,16 @@ calcSub     r s l = let (r', s') = (toString r, toString s)
 
 calcMatch   s r   = let (s', r') = (toString s, toString r)
                         (rS, rL) = (s' =~ r') :: (MatchOffset, MatchLength)
-                    in (VDouble (fromIntegral $ rS + 1), VDouble (fromIntegral rL))
+                    in (rS + 1, rL)
+
+calcSplit :: MonadIO m => Value -> Value -> IORef Array -> m Value
+calcSplit str fs arr = do
+   let ss    = (toString str) `splitWithSep` (toString fs)
+       is    = [1, 2..]
+       keys  = map show [1, 2..]
+       strs  = map valstr $ ss
+   liftIO $ writeIORef arr (M.fromList $ zip keys strs)
+   return $! VDouble $ fromIntegral $ length ss
+
+proxyFcn :: (Double -> Double) -> Value -> Value
+proxyFcn f e = VDouble $ f (toDouble e)

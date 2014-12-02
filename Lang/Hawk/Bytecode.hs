@@ -2,7 +2,7 @@ module Lang.Hawk.Bytecode where
 
 import Data.IORef
 import Data.Sequence
-
+import qualified Data.ByteString.Char8 as B
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 
@@ -30,7 +30,7 @@ data OpCode = ARITH ArithOp
             | FETCH (IORef Array)
             | KDRP
             | MATCH 
-            | CALL  String
+            | CALL  String Int
             | IN    (IORef Array)
             | ADEL  (IORef Array)
             | ADRP  (IORef Array)
@@ -40,6 +40,7 @@ data OpCode = ARITH ArithOp
             | JMP   Int
             | JF    Int
             | DRP
+            | SPLIT (IORef Array)
             deriving (Show)
 
 type Bytecode = Seq OpCode

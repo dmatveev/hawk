@@ -3,32 +3,19 @@
 module Lang.Hawk.Interpreter where
 
 import qualified Data.ByteString.Char8 as B
-
-import Text.Regex.PCRE
-
-import Data.IORef
-import Data.Fixed (mod')
-
-import Data.List (find, intercalate)
-import Data.Maybe (fromJust)
 import qualified Data.Foldable as F 
-
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
-
 import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
-
 import System.Random
-import System.IO
 
 import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Bytecode.Compiler
-import Lang.Hawk.Analyzer
 import Lang.Hawk.Runtime
 
 data HawkContext = HawkContext
@@ -107,40 +94,6 @@ m *! k = M.findWithDefault (VDouble 0) k m
 (*!!) :: IM.IntMap Value -> Int -> Value
 m *!! k = IM.findWithDefault (VDouble 0) k m
 
-
-unsup s = fail $ s ++ " are not yet supported"
-
-
--- Evaluate an expression, return the result
-eval :: Expression -> Interpreter Value
-eval (Concat _ _ )                   = unsup "Concatenations"
-eval (FunCall "atan2"  [vy, vx])     = undefined
-eval (FunCall "cos"    [vx])         = proxyFcn cos vx
-eval (FunCall "exp"    [vx])         = proxyFcn exp vx
-eval (FunCall "int"    [vx])         = proxyFcn (fromIntegral . truncate) vx
-eval (FunCall "log"    [vx])         = proxyFcn log vx
-eval (FunCall "sin"    [vx])         = proxyFcn sin vx
-eval (FunCall "sqrt"   [vx])         = proxyFcn sqrt vx
-eval (FunCall "srand"  vss)          = evalSRand vss
-eval (FunCall "rand"   [])           = evalRand
-eval (FunCall "index"  [vs, vt])     = undefined
-eval (FunCall "length" [vs])         = undefined
-eval (FunCall "split"  [vs, (VariableRef a)])      = evalSplitFS vs a
-eval (FunCall "split"  [vs, (VariableRef a), vfs]) = evalSplitVar vs a vfs
-eval (FunCall "substr" [vs, vp])     = evalSubstr vs vp
-eval (FunCall "substr" [vs, vp, vn]) = evalSubstr2 vs vp vn
-eval (FunCall "gsub"   [vr, vs])     = evalGSub vr vs
-eval (FunCall "gsub"   [vr, vs, vt]) = undefined
-eval (FunCall "sub"    [vr, vs])     = evalSub vr vs
-eval (FunCall "sub"    [vr, vs, vt]) = undefined
-eval (FunCall "match"  [vs, vr])     = undefined
-eval (FunCall f args)                = undefined --evalFunCall f args
-
-proxyFcn :: (Double -> Double) -> Expression -> Interpreter Value
-proxyFcn f e = do
-     d <- liftM toDouble $ eval e
-     return $! VDouble $ f d
-
 assignToField :: ArithOp -> Value -> Value -> Interpreter ()
 assignToField op vi val = do
      let i = toInt vi
@@ -161,10 +114,11 @@ assignToField op vi val = do
 splitIntoFields :: B.ByteString -> Interpreter [B.ByteString]
 splitIntoFields str = splitIntoFields' <$> (liftM toString $ gets hcFS) <*> pure str 
 
+
 reconstructThisLine :: Interpreter ()
 reconstructThisLine = do
      thisFields <- gets (IM.toList . hcFields)
-     ofs        <- liftM toString $ eval (BuiltInVar OFS)
+     ofs        <- liftM toString $ gets hcOFS
      let line = B.intercalate ofs $ map (toString . snd) thisFields
      modify (\s -> s { hcThisLine = line })
      return ()
@@ -177,12 +131,6 @@ reconstructThisFields l = do
         thisContext = oldContext { hcFields = thisFldMap }
     put $! thisContext
 
--- Execute a statement
-exec = undefined
--- exec k (NEXT)         = {-# SCC "execNEXT"  #-} (kNext  k) ()
--- exec k (EXIT _)       = {-# SCC "execEXIT"  #-} (kExit  k) () -- TODO argument
--- exec k (RETURN me)    = {-# SCC "execRET"   #-} execRET k me
--- exec _ (DELETE e)     = {-# SCC "execDEL"   #-} execDEL e
 
 evalBVariableRef ARGC     = gets hcARGC    
 evalBVariableRef ARGV     = gets hcARGV    
@@ -199,6 +147,7 @@ evalBVariableRef RS       = gets hcRS
 evalBVariableRef RSTART   = gets hcRSTART  
 evalBVariableRef SUBSEP   = gets hcSUBSEP  
 
+
 modBVar ARGC     f = modify $ \s -> s { hcARGC    = f (hcARGC     s)}
 modBVar ARGV     f = modify $ \s -> s { hcARGV    = f (hcARGV     s)}
 modBVar FILENAME f = modify $ \s -> s { hcFILENAME= f (hcFILENAME s)}
@@ -214,81 +163,18 @@ modBVar RS       f = modify $ \s -> s { hcRS      = f (hcRS       s)}
 modBVar RSTART   f = modify $ \s -> s { hcRSTART  = f (hcRSTART   s)}
 modBVar SUBSEP   f = modify $ \s -> s { hcSUBSEP  = f (hcSUBSEP   s)}
 
-evalSRand vss = do
-     g <- case vss of
-       [vs] -> liftM (mkStdGen . toInt) $! eval vs
-       []   -> liftIO getStdGen
-     modify $ (\s -> s { hcStdGen = g })
-     return $! VDouble 0 -- TODO: srand return value?
+intSRand :: Interpreter ()
+intSRand = liftIO getStdGen >>= \g -> modify (\s -> s {hcStdGen = g})
 
+intSRand' :: Value -> Interpreter ()
+intSRand' i = modify (\s -> s {hcStdGen = mkStdGen (toInt i)})
+
+evalRand :: Interpreter Value
 evalRand = do
      g <- gets hcStdGen
      let (r, g') = randomR (0.0, 1.0) g
      modify $ (\s -> s { hcStdGen = g' })
      return $! VDouble r
-
-evalSplitFS vs a = do
-     fs <- liftM toString $ eval (BuiltInVar FS)
-     evalSplit vs fs a
-
-evalSplitVar vs a vfs = do
-     fs <- liftM toString $ eval vfs
-     evalSplit vs fs a
-
-evalSplit :: Expression -> B.ByteString -> String -> Interpreter Value
-evalSplit vs fs arr = undefined
-   -- s <- liftM toString $ eval vs
-   -- let ss = s `splitWithSep` fs
-   --     is = [1, 2..]
-   -- ars <- gets hcArrays
-   -- let -- at first, clear the array from its previous contents
-   --     -- TODO: very slow, when we have all arrays in a single Data.Map
-   --     ars'  = M.filterWithKey (\(a,_) _ -> a /= arr) ars
-   --     -- Form a new array containing extracted values
-   --     keys  = map (arr,)  $ (map show is)
-   --     strs  = map valstr  $ ss
-   --     res   = M.fromList $ zip keys strs
-   --     -- Put our new values then
-   --     ars'' = M.union ars' res
-   -- modify $ (\s -> s { hcArrays = ars'' })
-   -- return $! VDouble $ fromIntegral $ length ss
-
-evalSubstr  vs vp = calcSubstr <$> eval vs <*> eval vp
-evalSubstr2 vs vp vn = calcSubstr2 <$> eval vs <*> eval vp <*> eval vn
-
-evalGSub vr vs = do
-     (m, str) <- calcGSub <$> eval vr <*> eval vs <*> gets hcThisLine
-     modify $ \s -> s { hcThisLine = str }
-     reconstructThisFields str
-     return $! VDouble $ fromIntegral m
-
--- evalGSubVar vr vs vt = do
---      (m, str) <- calcGSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
---      let vstr = valstr str
---      case vt of
---         (Variable ref)     -> assignToRef   ModSet ref vstr
---         (FieldRef ref)     -> undefined -- assignToField ModSet ref vstr
---         (ArrayRef arr ref) -> assignToArr   ModSet arr ref vstr 
---      return $! VDouble $ fromIntegral m
-
-evalSub vr vs = do
-     (n, str) <- calcSub <$> eval vr <*> eval vs <*> gets hcThisLine
-     if n == 0
-     then do return $! VDouble 0
-     else do modify (\s -> s { hcThisLine = str })
-             reconstructThisFields str
-             return $! VDouble 1
-
--- evalSubVar vr vs vt = do
---      (n, str) <- calcSub <$> eval vr <*> eval vs <*> (liftM toString $ eval vt)
---      if n == 0
---      then do return $! VDouble 0
---      else do let result = valstr str
---              case vt of
---                 (Variable ref)     -> assignToRef   ModSet ref result
---                 (FieldRef ref)     -> undefined -- assignToField ModSet ref result
---                 (ArrayRef arr ref) -> assignToArr   ModSet arr ref result 
---              return $! VDouble 1
 
 -- evalFunCall f args = do
 --      mfcn <- liftM (find (func f)) $ gets hcCode

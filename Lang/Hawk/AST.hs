@@ -20,6 +20,7 @@ data Expression = Arith ArithOp Expression Expression
                 | Variable (IORef Value) 
                 | ArrayRef String Expression
                 | Array (IORef Array) Expression
+                | Array' (IORef Array)
                 | BuiltInVar BVar
                 | Assignment ArithOp Expression Expression
                 | Incr Notation Expression

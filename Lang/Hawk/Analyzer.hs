@@ -156,8 +156,18 @@ traceE (In _               (VariableRef a)) = updArr a
 traceE (Logic _ lhs rhs)    = cmb' (traceE lhs) (traceE rhs)
 traceE (Match lhs rhs)      = cmb' (traceE lhs) (traceE rhs)
 traceE (NoMatch lhs rhs)    = cmb' (traceE lhs) (traceE rhs)
-traceE (FunCall _ _)        = updFunCalls
 traceE (InlineIf c t f)     = cmb' (traceE c) (cmb' (traceE t) (traceE f))
+traceE (FunCall f vs)       = trf f vs >> updFunCalls
+ 
+trf "gsub"  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
+trf "gsub"  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
+trf "gsub"  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
+trf "sub"   [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
+trf "sub"   [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
+trf "sub"   [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
+trf "split" [a1,(VariableRef a)]    = traceE a1 >> updArr a
+trf "split" [a1,(VariableRef a),a3] = traceE a1 >> traceE a3 >> updArr a
+trf _ vs                            = mapM_ traceE vs >> updFunCalls
 
 traceS :: Statement -> Tracer ()
 traceS (Expression e)         = traceE e >> return ()
@@ -227,12 +237,15 @@ newtype Rewrite a = Rewrite (Reader RewriteTable a)
 runRewrite :: Rewrite a -> RewriteTable -> a
 runRewrite (Rewrite r) t = runReader r t
 
+var s = asks ((M.! s) . rtVars)
+arr s = asks ((M.! s) . rtArrs)
+
 putRefsE :: Expression -> Rewrite Expression
 putRefsE (Arith a lhs rhs)        = Arith      <$> pure a <*> putRefsE lhs <*> putRefsE rhs
 putRefsE e@(Const _)              = return e   
 putRefsE (FieldRef e)             = FieldRef   <$> putRefsE e
-putRefsE (VariableRef s)          = Variable   <$> asks ((M.! s) . rtVars)
-putRefsE (ArrayRef s e)           = Array      <$> asks ((M.! s) . rtArrs) <*> putRefsE e
+putRefsE (VariableRef s)          = Variable   <$> var s
+putRefsE (ArrayRef s e)           = Array      <$> arr s <*> putRefsE e
 putRefsE e@(BuiltInVar _)         = return e
 putRefsE (Assignment m p v)       = Assignment <$> pure m <*> putRefsE p <*> putRefsE v
 putRefsE (Incr p e)               = Incr       <$> pure p <*> putRefsE e
@@ -241,12 +254,18 @@ putRefsE (Relation r lhs rhs)     = Relation   <$> pure r <*> putRefsE lhs <*> p
 putRefsE (Not e)                  = Not        <$> putRefsE e
 putRefsE (Neg e)                  = Neg        <$> putRefsE e
 putRefsE (Id e)                   = Id         <$> putRefsE e
-putRefsE (In v (VariableRef a))   = In'        <$> putRefsE v <*> asks ((M.! a) . rtArrs)
+putRefsE (In v (VariableRef a))   = In'        <$> putRefsE v <*> arr a
 putRefsE (Logic l lhs rhs)        = Logic      <$> pure l <*> putRefsE lhs <*> putRefsE rhs
 putRefsE (Match lhs rhs)          = Match      <$> putRefsE lhs <*> putRefsE rhs
 putRefsE (NoMatch lhs rhs)        = NoMatch    <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (FunCall s args)         = FunCall    <$> pure s <*> mapM putRefsE args
+putRefsE (FunCall s args)         = prf s args
 putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c <*> putRefsE t <*> putRefsE f
+
+prf "split" [a1,(VariableRef a)]    = FunCall <$> pure "split"
+                                              <*> sequence [putRefsE a1, (Array' <$> arr a)]
+prf "split" [a1,(VariableRef a),a3] = FunCall <$> pure "split"
+                                              <*> sequence [putRefsE a1, (Array' <$> arr a), putRefsE a3]
+prf f vs                            = FunCall <$> pure f <*> mapM putRefsE vs 
 
 putRefsS :: Statement -> Rewrite Statement
 putRefsS (Expression e)           = Expression <$> putRefsE e
@@ -255,9 +274,7 @@ putRefsS (IF e s ms)              = IF         <$> putRefsE e <*> putRefsS s <*>
 putRefsS (WHILE e s)              = WHILE      <$> putRefsE e <*> putRefsS s
 putRefsS (FOR mi mc ms s)         = FOR        <$> mrefs mi <*> mrefs mc <*> mrefs ms
                                                <*> putRefsS s
-putRefsS (FOREACH (VariableRef v) a s) = FOREACH' <$> asks ((M.! v) . rtVars)
-                                                  <*> asks ((M.! a) . rtArrs)
-                                                  <*> putRefsS s
+putRefsS (FOREACH (VariableRef v) a s) = FOREACH' <$> var v <*> arr a <*> putRefsS s
 putRefsS (DO s e)                 = DO         <$> putRefsS s <*> putRefsE e
 putRefsS (PRINT es)               = PRINT      <$> mapM putRefsE es
 putRefsS (EXIT me)                = EXIT       <$> mrefs me
@@ -265,8 +282,8 @@ putRefsS (BREAK)                  = return BREAK
 putRefsS (CONT)                   = return CONT
 putRefsS (NEXT)                   = return NEXT
 putRefsS (NOP)                    = return NOP
-putRefsS (DELETE (VariableRef s)) = DELARR <$> asks ((M.! s) . rtArrs)
-putRefsS (DELETE (ArrayRef s e))  = DELELM <$> asks ((M.! s) . rtArrs) <*> putRefsE e
+putRefsS (DELETE (VariableRef s)) = DELARR <$> arr s
+putRefsS (DELETE (ArrayRef s e))  = DELELM <$> arr s <*> putRefsE e
 putRefsS (RETURN me)              = RETURN <$> mrefs me
 
 putRefsP :: Pattern -> Rewrite Pattern

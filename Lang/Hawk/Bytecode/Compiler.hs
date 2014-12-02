@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
 module Lang.Hawk.Bytecode.Compiler where
 
@@ -101,7 +101,54 @@ compileE (In' e r)          = compileE e >> op (IN r)
 compileE (Logic o l r)      = compileE l >> compileE r >> op (LGC o) -- TODO: eval.order!
 compileE (Match l r)        = compileE l >> compileE r >> op MATCH
 compileE (NoMatch l r)      = compileE l >> compileE r >> op MATCH >> op NOT
-compileE (FunCall s es)     = mapM_ compileE es >> op (CALL s)
+compileE (FunCall f@"gsub" vs) = compileFSub f vs
+compileE (FunCall f@"sub"  vs) = compileFSub f vs
+compileE (FunCall "split"  vs) = compileSPLIT vs
+compileE (FunCall s        vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
+
+compileFSub f [a1,a2] = do
+   compileE a1
+   compileE a2
+   op $ PUSH (VDouble 0)
+   op $ FIELD
+   op $ CALL f 3
+   op $ PUSH (VDouble 0)
+   op $ FSET
+
+compileFSub f [a1,a2,(Variable a)] = do
+   compileE a1
+   compileE a2
+   op $ VAR a
+   op $ CALL f 3
+   op $ VSET a
+
+compileFSub f [a1,a2,(Array a i)] = do
+   compileE a1
+   compileE a2
+   compileE i
+   op $ ARR a
+   op $ CALL f 3
+   compileE i
+   op $ ASET a
+
+compileFSub f [a1,a2,(FieldRef e)] = do
+   compileE a1
+   compileE a2
+   compileE e
+   op $ FIELD
+   op $ CALL f 3
+   compileE e
+   op $ FSET
+
+compileSPLIT [a1,(Array' a)] = do
+   compileE a1
+   op $ BVAR FS
+   op $ SPLIT a
+
+compileSPLIT [a1,(Array' a),a3] = do
+   compileE a1
+   compileE a3
+   op $ SPLIT a
 
 compileASGN m p e =
    if m == Set
@@ -139,7 +186,7 @@ compileS (WHILE e s)       = compileWHILE e s
 compileS (FOR mi mc ms st) = compileFOR mi mc ms st
 compileS (FOREACH' r a st) = compileFOREACH r a st
 compileS (DO s e)          = compileDO s e
-compileS (PRINT es)        = mapM_ compileE es >> op (PRN (length es))
+compileS (PRINT es)        = mapM_ compileE (reverse es) >> op (PRN (length es))
 compileS (BREAK)           = loopBreak
 compileS (CONT)            = loopCont
 compileS (NOP)             = op $ DRP

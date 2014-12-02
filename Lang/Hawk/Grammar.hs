@@ -1,5 +1,6 @@
  module Lang.Hawk.Grammar where
 
+import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 import Control.Applicative ((<$>), (<*>), (<*), (*>))
 import Control.Monad (when, liftM)
