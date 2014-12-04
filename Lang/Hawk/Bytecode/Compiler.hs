@@ -101,10 +101,10 @@ compileE (In' e r)          = compileE e >> op (IN r)
 compileE (Logic o l r)      = compileE l >> compileE r >> op (LGC o) -- TODO: eval.order!
 compileE (Match l r)        = compileE l >> compileE r >> op MATCH
 compileE (NoMatch l r)      = compileE l >> compileE r >> op MATCH >> op NOT
-compileE (FunCall f@"gsub" vs) = compileFSub f vs
-compileE (FunCall f@"sub"  vs) = compileFSub f vs
-compileE (FunCall "split"  vs) = compileSPLIT vs
-compileE (FunCall s        vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
+compileE (FunCall f@GSub vs) = compileFSub f vs
+compileE (FunCall f@FSub  vs) = compileFSub f vs
+compileE (FunCall Split  vs) = compileSPLIT vs
+compileE (FunCall s      vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
 
 compileFSub f [a1,a2] = do
    compileE a1

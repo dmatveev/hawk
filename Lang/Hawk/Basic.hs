@@ -17,5 +17,10 @@ data BVar = ARGC | ARGV
           | SUBSEP
             deriving (Eq, Ord, Show)
 
+data BFunc = Atan2 | Cos | Exp | Int | Log | Sin | Sqrt
+           | Srand | Rand 
+           | Index | Length | Substr | FMatch | FSub | GSub | Split
+             deriving (Eq, Show)
+
 data Notation = Pre | Post
                 deriving (Eq, Show)

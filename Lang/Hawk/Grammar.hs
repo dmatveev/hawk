@@ -31,6 +31,24 @@ hawkBuiltinVars =
     , ("SUBSEP"  ,SUBSEP  ) -- subscript separator (default "\034")
     ]
 
+hawkFunctions = 
+    [ ("atan2" , Atan2  )
+    , ("cos"   , Cos    )
+    , ("exp"   , Exp    )
+    , ("int"   , Int    )
+    , ("log"   , Log    )
+    , ("sin"   , Sin    )
+    , ("sqrt"  , Sqrt   )
+    , ("srand" , Srand  )
+    , ("rand"  , Rand   )
+    , ("index" , Index  )
+    , ("length", Length )
+    , ("substr", Substr )
+    , ("match" , FMatch )
+    , ("sub"   , FSub   )
+    , ("gsub"  , GSub   ) 
+    ]
+
 hawkConstructs =
     [ "print"    -- prints comma-separated list of arguments, concatenated with OFS
     , "if"       -- if-then[-else] statement
@@ -80,7 +98,7 @@ range   = RANGE <$> sp <* rsvdOp "," <*> sp <?> "range pattern" where sp = exprp
 expr = buildExpressionParser table term <?> "expression"
 
 term = parens expr
-     <|> try funcall
+     <|> try funcalls
      <|> literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
 
 literal = stringLit <|> numericLit <|> regexLit <?> "literal"
@@ -96,8 +114,10 @@ fieldRef = FieldRef <$> (char '$' *> r <?> "data field reference")
 variableRef = VariableRef <$> identifier <?> "variable reference"
 arrayRef = ArrayRef <$> identifier <* char '[' <*> expr <* char ']' <* whitespace
 
-funcall = FunCall <$> identifier <*> args <* whitespace <?> "function call"
+funcall (s,f) = FunCall <$> (rsvd s >> return f) <*> args <* whitespace <?> "function call"
    where args = char '(' *> expr `sepBy` (symbol ",") <* char ')'
+
+funcalls = choice $ map funcall hawkFunctions
 
 builtInVar (s,b) = rsvd s >> return (BuiltInVar b)
 builtInVars      = choice $ map builtInVar hawkBuiltinVars

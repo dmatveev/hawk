@@ -35,7 +35,7 @@ data Expression = Arith ArithOp Expression Expression
                 | Logic LogOp Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
-                | FunCall String [Expression]
+                | FunCall BFunc [Expression]
                 | InlineIf Expression Expression Expression
                   deriving (Eq, Show)
 

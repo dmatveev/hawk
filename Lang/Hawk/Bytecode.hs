@@ -30,7 +30,7 @@ data OpCode = ARITH ArithOp
             | FETCH (IORef Array)
             | KDRP
             | MATCH 
-            | CALL  String Int
+            | CALL  BFunc Int
             | IN    (IORef Array)
             | ADEL  (IORef Array)
             | ADRP  (IORef Array)

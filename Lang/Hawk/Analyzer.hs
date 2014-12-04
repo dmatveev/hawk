@@ -159,14 +159,14 @@ traceE (NoMatch lhs rhs)    = cmb' (traceE lhs) (traceE rhs)
 traceE (InlineIf c t f)     = cmb' (traceE c) (cmb' (traceE t) (traceE f))
 traceE (FunCall f vs)       = trf f vs >> updFunCalls
  
-trf "gsub"  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
-trf "gsub"  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
-trf "gsub"  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
-trf "sub"   [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
-trf "sub"   [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
-trf "sub"   [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
-trf "split" [a1,(VariableRef a)]    = traceE a1 >> updArr a
-trf "split" [a1,(VariableRef a),a3] = traceE a1 >> traceE a3 >> updArr a
+trf GSub  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
+trf GSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
+trf GSub  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
+trf FSub  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
+trf FSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
+trf FSub  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
+trf Split [a1,(VariableRef a)]    = traceE a1 >> updArr a
+trf Split [a1,(VariableRef a),a3] = traceE a1 >> traceE a3 >> updArr a
 trf _ vs                            = mapM_ traceE vs >> updFunCalls
 
 traceS :: Statement -> Tracer ()
@@ -261,10 +261,10 @@ putRefsE (NoMatch lhs rhs)        = NoMatch    <$> putRefsE lhs <*> putRefsE rhs
 putRefsE (FunCall s args)         = prf s args
 putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c <*> putRefsE t <*> putRefsE f
 
-prf "split" [a1,(VariableRef a)]    = FunCall <$> pure "split"
-                                              <*> sequence [putRefsE a1, (Array' <$> arr a)]
-prf "split" [a1,(VariableRef a),a3] = FunCall <$> pure "split"
-                                              <*> sequence [putRefsE a1, (Array' <$> arr a), putRefsE a3]
+prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
+                                            <*> sequence [putRefsE a1, (Array' <$> arr a)]
+prf Split [a1,(VariableRef a),a3] = FunCall <$> pure Split
+                                            <*> sequence [putRefsE a1, (Array' <$> arr a), putRefsE a3]
 prf f vs                            = FunCall <$> pure f <*> mapM putRefsE vs 
 
 putRefsS :: Statement -> Rewrite Statement
