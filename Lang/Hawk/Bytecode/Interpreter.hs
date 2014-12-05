@@ -57,6 +57,7 @@ dbg _  = return ()
 --             liftIO $ putStrLn $ opStr ++ spc ++ show st 
 
 bc :: OpCode -> Interpreter ()
+{-# INLINE bc #-}
 bc (ARITH o)         = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
 bc (PUSH v)          = push_   v
 bc POP               = pop_    >>  return ()
@@ -93,6 +94,7 @@ bc DRP               = modify $ \s -> s { hcSTACK = [] }
 bc op                = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
 
 execBC :: [OpCode] -> Interpreter () 
+{-# INLINE execBC #-}
 execBC []             = return ()
 execBC (op@(JF  n):r) = dbg op >> pop_    >>= \top -> if toBool top then execBC r else jmp n
 execBC (op@(JMP n):r) = dbg op >> jmp n
@@ -171,6 +173,7 @@ anxt r = do
    modify $ \s -> s { hcKEYS = ks }
 
 fref :: Value -> Interpreter Value
+{-# INLINE fref #-}
 fref v = do
    let i = toInt v 
    if i == 0
@@ -178,6 +181,7 @@ fref v = do
    else liftM (*!! i) $ gets hcFields
 
 jmp :: Int -> Interpreter ()
+{-# INLINE jmp #-}
 jmp n = gets hcOPCODES >>= \src -> execBC (drop n src)
 
 prn [] =  gets hcThisLine >>= (liftIO . B.putStrLn)

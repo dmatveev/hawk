@@ -132,6 +132,8 @@ reconstructThisFields l = do
     put $! thisContext
 
 
+evalBVariableRef :: BVar -> Interpreter Value
+{-# INLINE evalBVariableRef #-}
 evalBVariableRef ARGC     = gets hcARGC    
 evalBVariableRef ARGV     = gets hcARGV    
 evalBVariableRef FILENAME = gets hcFILENAME
@@ -147,7 +149,8 @@ evalBVariableRef RS       = gets hcRS
 evalBVariableRef RSTART   = gets hcRSTART  
 evalBVariableRef SUBSEP   = gets hcSUBSEP  
 
-
+modBVar :: BVar -> (Value -> Value) -> Interpreter ()
+{-# INLINE modBVar #-}
 modBVar ARGC     f = modify $ \s -> s { hcARGC    = f (hcARGC     s)}
 modBVar ARGV     f = modify $ \s -> s { hcARGV    = f (hcARGV     s)}
 modBVar FILENAME f = modify $ \s -> s { hcFILENAME= f (hcFILENAME s)}

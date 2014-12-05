@@ -24,7 +24,6 @@ calcArith lval rval op =
        Mod -> mod' l r
        Pow -> l ** r
  
-
 cmpValues lval rval op = VDouble $! test $ case (lval, rval) of
     (VString lStr lNum sParsed, VString rStr rNum rParsed) ->
        -- If the both strings represent numbers completely
