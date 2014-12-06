@@ -58,40 +58,40 @@ dbg _  = return ()
 
 bc :: OpCode -> Interpreter ()
 {-# INLINE bc #-}
-bc (ARITH o)         = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
-bc (PUSH v)          = push_   v
-bc POP               = pop_    >>  return ()
-bc FIELD             = pop     >>= \(top,st) -> fref top >>= flip push st
-bc FSET              = pop2_   >>= \(i,v) -> assignToField Set i v
-bc (FMOD o)          = pop2_   >>= \(i,v) -> assignToField o   i v
-bc (VAR r)           = push_   =<< (liftIO $! readIORef r)
-bc (VSET r)          = pop_    >>= \top -> liftIO $ writeIORef r top
-bc (VMOD o r)        = pop_    >>= \top -> liftIO $ modifyIORef' r (\v -> calcArith v top o)
-bc (BVAR b)          = push_   =<< evalBVariableRef b
-bc (BSET b)          = pop_    >>= \top -> modBVar b (const top)
-bc (BMOD o b)        = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
-bc (ARR r)           = pop     >>= \(idx,st)   -> aref r idx >>= flip push st
-bc (ASET r)          = pop2    >>= \(idx,v,st) -> aset r idx v >> push v st
-bc (AMOD o r)        = pop2    >>= \(idx,v,st) -> amod r idx v o >>= flip push st
-bc (CMP o)           = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
-bc (LGC o)           = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
-bc NOT               = pop     >>= \(top,st)   -> push (vNot top) st
-bc NEG               = pop     >>= \(top,st)   -> push (vNeg top) st
-bc (CALL f n)        = funcall f n
-bc (SPLIT a)         = pop2    >>= \(fs,s,st)  -> calcSplit s fs a >>= flip push st
-bc DUP               = stack   >>= \st@(top:_) -> push top st
-bc (PRN n)           = popN_ n >>= prn
-bc MATCH             = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
-bc (IN r)            = pop     >>= \(idx,st)   -> alkp r idx >>= flip push st 
-bc (ADEL r)          = pop_    >>= \idx        -> adel r idx
-bc (ADRP r)          = liftIO $ writeIORef r M.empty 
-bc (FETCH r)         = afetch r
-bc (ANXT r)          = anxt r
-bc ACHK              = push_   =<< (gets hcKEYS >>= \ks -> return $! vBool (not $ null ks))
-bc KDRP              = modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
-                                        , hcKSTACK = tail (hcKSTACK s) }
-bc DRP               = modify $ \s -> s { hcSTACK = [] }
-bc op                = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
+bc (ARITH o)  = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
+bc (PUSH v)   = push_   v
+bc POP        = pop_    >>  return ()
+bc FIELD      = pop     >>= \(top,st) -> fref top >>= flip push st
+bc FSET       = pop2_   >>= \(i,v) -> assignToField Set i v
+bc (FMOD o)   = pop2_   >>= \(i,v) -> assignToField o   i v
+bc (VAR r)    = push_   =<< (liftIO $! readIORef r)
+bc (VSET r)   = pop_    >>= \top -> liftIO $ writeIORef r top
+bc (VMOD o r) = pop_    >>= \top -> liftIO $ modifyIORef' r (\v -> calcArith v top o)
+bc (BVAR b)   = push_   =<< evalBVariableRef b
+bc (BSET b)   = pop_    >>= \top -> modBVar b (const top)
+bc (BMOD o b) = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
+bc (ARR r)    = pop     >>= \(idx,st)   -> aref r idx >>= flip push st
+bc (ASET r)   = pop2    >>= \(idx,v,st) -> aset r idx v >> push v st
+bc (AMOD o r) = pop2    >>= \(idx,v,st) -> amod r idx v o >>= flip push st
+bc (CMP o)    = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
+bc (LGC o)    = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
+bc NOT        = pop     >>= \(top,st)   -> push (vNot top) st
+bc NEG        = pop     >>= \(top,st)   -> push (vNeg top) st
+bc (CALL f n) = funcall f n
+bc (SPLIT a)  = pop2    >>= \(fs,s,st)  -> calcSplit s fs a >>= flip push st
+bc DUP        = stack   >>= \st@(top:_) -> push top st
+bc (PRN n)    = popN_ n >>= prn
+bc MATCH      = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
+bc (IN r)     = pop     >>= \(idx,st)   -> alkp r idx >>= flip push st 
+bc (ADEL r)   = pop_    >>= \idx        -> adel r idx
+bc (ADRP r)   = liftIO $ writeIORef r M.empty 
+bc (FETCH r)  = afetch r
+bc (ANXT r)   = anxt r
+bc ACHK       = push_   =<< (gets hcKEYS >>= \ks -> return $! vBool (not $ null ks))
+bc KDRP       = modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
+                                 , hcKSTACK = tail (hcKSTACK s) }
+bc DRP        = modify $ \s -> s { hcSTACK = [] }
+bc op         = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
 
 execBC :: [OpCode] -> Interpreter () 
 {-# INLINE execBC #-}

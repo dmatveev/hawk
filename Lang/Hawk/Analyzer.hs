@@ -265,7 +265,7 @@ prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
                                             <*> sequence [putRefsE a1, (Array' <$> arr a)]
 prf Split [a1,(VariableRef a),a3] = FunCall <$> pure Split
                                             <*> sequence [putRefsE a1, (Array' <$> arr a), putRefsE a3]
-prf f vs                            = FunCall <$> pure f <*> mapM putRefsE vs 
+prf f vs                          = FunCall <$> pure f <*> mapM putRefsE vs 
 
 putRefsS :: Statement -> Rewrite Statement
 putRefsS (Expression e)           = Expression <$> putRefsE e
