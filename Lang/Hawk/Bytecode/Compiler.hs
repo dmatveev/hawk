@@ -45,7 +45,7 @@ loop body = do
    oldState <- gets csLS
    enter <- pos
    modify $ \s -> s { csLS = Just (initialLoopState enter) }
-   replicateM_ 2 body >> op (JMP enter)
+   replicateM_ 1 body >> op (JMP enter)
    leave <- pos
    loopState <- liftM fromJust $ gets csLS
    forM_ (lsBreaks loopState) $ putOP (JMP leave)

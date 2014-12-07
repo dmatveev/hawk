@@ -26,40 +26,40 @@ dbg _ _  = return ()
 
 bc :: [Value] -> OpCode -> Interpreter [Value]
 {-# INLINE bc #-}
-bc (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $! (calcArith l r o):st
-bc st         (PUSH v)   = {-# SCC "PUSH"  #-} return $! v:st
-bc (top:st)   POP        = {-# SCC "POP"   #-} return $! st
-bc (top:st)   FIELD      = {-# SCC "FIELD" #-} fref top >>= \v -> return $! v:st
-bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $! st)
-bc (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField o   i v >> (return $! st)
-bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $! readIORef r) >>= \v -> return $! v:st
-bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $! st)
-bc (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $! st)
-bc st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef b >>= \v -> return $! v:st
-bc (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar b (const top) >> (return $! st)
-bc (top:st)   (BMOD o b) = {-# SCC "BMOD"  #-} modBVar b (\v -> calcArith v top o) >> (return $! st)
-bc (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $! v:st
-bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $! st) -- TODO: previously, value was pushed on stack
-bc (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $! v:st
-bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $! (cmpValues lv rv o):st
-bc (rv:lv:st) (LGC o)    = {-# SCC "LGC"   #-} return $! (calcLogic o lv rv):st
-bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $! (vNot top):st
-bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $! (vNeg top):st
-bc st (CALL f n)         = {-# SCC "CALL"  #-} funcall st f n
-bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} calcSplit s fs a >>= \v -> return $! v:st
-bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $! top:st
+bc (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $ (calcArith l r o):st
+bc st         (PUSH v)   = {-# SCC "PUSH"  #-} return $ v:st
+bc (top:st)   POP        = {-# SCC "POP"   #-} return $ st
+bc (top:st)   FIELD      = {-# SCC "FIELD" #-} fref top >>= \v -> return $ v:st
+bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $ st)
+bc (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField o   i v >> (return $ st)
+bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $! readIORef r) >>= \v -> return $ v:st
+bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ st)
+bc (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $ st)
+bc st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef b >>= \v -> return $ v:st
+bc (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar b (const top) >> (return $ st)
+bc (top:st)   (BMOD o b) = {-# SCC "BMOD"  #-} modBVar b (\v -> calcArith v top o) >> (return $ st)
+bc (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $ v:st
+bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ st) -- TODO: previously, value was pushed on stack
+bc (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $ v:st
+bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o):st
+bc (rv:lv:st) (LGC o)    = {-# SCC "LGC"   #-} return $ (calcLogic o lv rv):st
+bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top):st
+bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top):st
+bc st         (CALL f n) = {-# SCC "CALL"  #-} funcall st f n
+bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} calcSplit s fs a >>= \v -> return $ v:st
+bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top:st
 bc st         (PRN n)    = {-# SCC "PRN"   #-} do let (vs,r) = splitAt n st
-                                                  prn vs >> (return $! r)
-bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $! (match lv rv):st
-bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $! v:st
-bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $! st)
+                                                  prn vs >> (return $ r)
+bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv):st
+bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v:st
+bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
 bc st         (ADRP r)   = {-# SCC "ADRP"  #-} (liftIO $ writeIORef r M.empty) >> (return $! st)
-bc st         (FETCH r)  = {-# SCC "FETCH" #-} afetch r >> (return $! st)
-bc st         (ANXT r)   = {-# SCC "ANXT"  #-} anxt r >> (return $! st)
-bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $! (vBool (not $ null ks)):st
+bc st         (FETCH r)  = {-# SCC "FETCH" #-} afetch r >> (return $ st)
+bc st         (ANXT r)   = {-# SCC "ANXT"  #-} anxt r >> (return $ st)
+bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $ (vBool (not $ null ks)):st
 bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
                                                                    , hcKSTACK = tail (hcKSTACK s) }
-                                                  return $! st
+                                                  return $ st
 bc st         DRP        = {-# SCC "DRP" #-} return $! []
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
@@ -76,21 +76,21 @@ jmp n st = gets hcOPCODES >>= \src -> let r = drop n src in (execBC st r)
 
 funcall :: [Value] -> BFunc -> Int -> Interpreter [Value]
 {-# INLINE funcall #-}
-funcall (vx:vy:st)    Atan2  2 = return $! (calcAtan2 vy vx):st
-funcall (top:st)      Cos    1 = return $! (proxyFcn cos top):st
-funcall (top:st)      Exp    1 = return $! (proxyFcn exp top):st
-funcall (top:st)      Int    1 = return $! (proxyFcn (fromIntegral.truncate) top):st
-funcall (top:st)      Log    1 = return $! (proxyFcn log top):st
-funcall (top:st)      Sin    1 = return $! (proxyFcn sin top):st
-funcall (top:st)      Sqrt   1 = return $! (proxyFcn sqrt top):st
-funcall st            Srand  0 = intSRand >> (return $! (VDouble 0):st)
-funcall (top:st)      Srand  1 = intSRand' top >> (return $! (VDouble 0):st)
-funcall st            Rand   0 = evalRand >>= \v -> return $! v:st
-funcall (vt:vs:st)    Index  2 = return $! (calcIndex vs vt):st
-funcall (top:st)      Length 1 = return $! (calcLength top):st
-funcall (vp:vs:st)    Substr 2 = return $! (calcSubstr vs vp):st
-funcall (vn:vp:vs:st) Substr 3 = return $! (calcSubstr2 vs vp vn):st
-funcall (vr:vs:st)    FMatch 2 = fmatch vs vr >>= \v -> return $! v:st
+funcall (vx:vy:st)    Atan2  2 = return $ (calcAtan2 vy vx):st
+funcall (top:st)      Cos    1 = return $ (proxyFcn cos top):st
+funcall (top:st)      Exp    1 = return $ (proxyFcn exp top):st
+funcall (top:st)      Int    1 = return $ (proxyFcn (fromIntegral.truncate) top):st
+funcall (top:st)      Log    1 = return $ (proxyFcn log top):st
+funcall (top:st)      Sin    1 = return $ (proxyFcn sin top):st
+funcall (top:st)      Sqrt   1 = return $ (proxyFcn sqrt top):st
+funcall st            Srand  0 = intSRand >> (return $ (VDouble 0):st)
+funcall (top:st)      Srand  1 = intSRand' top >> (return $ (VDouble 0):st)
+funcall st            Rand   0 = evalRand >>= \v -> return $ v:st
+funcall (vt:vs:st)    Index  2 = return $ (calcIndex vs vt):st
+funcall (top:st)      Length 1 = return $ (calcLength top):st
+funcall (vp:vs:st)    Substr 2 = return $ (calcSubstr vs vp):st
+funcall (vn:vp:vs:st) Substr 3 = return $ (calcSubstr2 vs vp vn):st
+funcall (vr:vs:st)    FMatch 2 = fmatch vs vr >>= \v -> return $ v:st
 funcall (vl:vs:vr:st) FSub   3 = intFSub calcSub vr vs (toString vl) st
 funcall (vl:vs:vr:st) GSub   3 = intFSub calcGSub vr vs (toString vl) st
 
