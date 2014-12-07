@@ -27,7 +27,7 @@ import System.IO
 --
 -- READER and WORKER communicate via queue(s). The basic queue element is Workload.
 
-data Record   = Record !Integer !B.ByteString ![B.ByteString] deriving Show
+data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value) deriving Show
 data Workload = Workload { wID :: !Integer, wRS :: ![Record] } deriving Show
 
 inThread :: IO () -> IO ()
@@ -67,7 +67,8 @@ enqueue l = do
    nid <- nextRecID
    fs  <- gets rFS
    let flds = splitIntoFields' fs  l
-       newR = Record nid l flds
+       fldm = IM.fromList (zip [1,2..] (map valstr flds))
+       newR = Record nid l (length flds) fldm
    modify $ \s -> seq newR $ s { rTmp = newR:(rTmp s) }
    tmpSz <- gets (length . rTmp)
    when (tmpSz >= 10) sendWorkload
@@ -112,11 +113,10 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
         (Just (Workload _ rs)) -> forM rs wrkProc >> workerLoop
         Nothing                -> return ()
 
-   wrkProc (Record nr l flds) = do
-      let thisFldMap = {-# SCC "CTXMAP" #-} IM.fromList (zip [1,2..] (map valstr flds)) 
+   wrkProc (Record nr l nf flds) = do
       {-# SCC "CTXMOD" #-} modify $ \s -> s { hcThisLine = l
-                                            , hcFields   = thisFldMap
-                                            , hcNF       = VDouble (fromIntegral $ length flds)
+                                            , hcFields   = flds
+                                            , hcNF       = VDouble (fromIntegral $ nf)
                                             , hcNR       = VDouble (succ $ toDouble $ hcNR s)
                                             , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
                                             }
