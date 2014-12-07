@@ -113,13 +113,13 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
         Nothing                -> return ()
 
    wrkProc (Record nr l flds) = do
-      let thisFldMap = IM.fromList (zip [1,2..] (map valstr flds)) 
-      modify $ \s -> s { hcThisLine = l
-                       , hcFields   = thisFldMap
-                       , hcNF       = VDouble (fromIntegral $ length flds)
-                       , hcNR       = VDouble (succ $ toDouble $ hcNR s)
-                       , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
-                       }
+      let thisFldMap = {-# SCC "CTXMAP" #-} IM.fromList (zip [1,2..] (map valstr flds)) 
+      {-# SCC "CTXMOD" #-} modify $ \s -> s { hcThisLine = l
+                                            , hcFields   = thisFldMap
+                                            , hcNF       = VDouble (fromIntegral $ length flds)
+                                            , hcNR       = VDouble (succ $ toDouble $ hcNR s)
+                                            , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
+                                            }
       gets hcOPCODES >>= execBC []
 
    wrkFinish = gets hcSHUTDOWN >>= execBC []
