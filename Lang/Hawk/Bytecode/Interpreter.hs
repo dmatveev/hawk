@@ -14,111 +14,80 @@ import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
 
-
-pop   :: Interpreter (Value, [Value])
-pop_  :: Interpreter Value
-pop2  :: Interpreter (Value, Value, [Value])
-pop2_ :: Interpreter (Value, Value)
-pop3  :: Interpreter (Value, Value, Value, [Value])
-popN  :: Int -> Interpreter ([Value], [Value])
-popN_ :: Int -> Interpreter [Value]
-push  :: Value -> [Value] -> Interpreter ()
-push_ :: Value -> Interpreter ()
-stack :: Interpreter [Value]
-{-# INLINE pop   #-}
-{-# INLINE pop_  #-}
-{-# INLINE pop2  #-}
-{-# INLINE pop2_ #-}
-{-# INLINE pop3  #-}
-{-# INLINE popN  #-}
-{-# INLINE popN_ #-}
-{-# INLINE push  #-}
-{-# INLINE push_ #-}
-{-# INLINE stack #-}
-
-pop        = stack  >>= \(top:st) -> return (top, st)
-pop_       = pop    >>= \(top,st) -> modify (\s -> s { hcSTACK = st }) >> return top
-pop2       = stack  >>= \(r:l:st) -> return (r,l,st)
-pop2_      = pop2   >>= \(r,l,st) -> modify (\s -> s { hcSTACK = st }) >> return (r,l)
-pop3       = stack  >>= \(c:b:a:st) -> modify (\s -> s { hcSTACK = st }) >> return (c,b,a,st)
-popN n     = stack  >>= \st -> return $ splitAt n st
-popN_ n    = popN n >>= \(vs,rs) -> modify (\s -> s { hcSTACK = rs }) >> return vs
-push  v st = modify $ \s -> s { hcSTACK = seq v v:st }
-push_ v    = modify $ \s -> s { hcSTACK = seq v v:(hcSTACK s) }
-stack      = gets hcSTACK
-
-dbg :: OpCode -> Interpreter ()
+dbg :: [Value] -> OpCode -> Interpreter ()
 {-# INLINE dbg #-}
-dbg _  = return ()
--- dbg op = do st <- gets hcSTACK
---             let opStr = show op
---                 opLen = length opStr
---                 spc   = take (50 - opLen) $ repeat ' '
---             liftIO $ putStrLn $ opStr ++ spc ++ show st 
+dbg _ _  = return ()
+-- dbg st op = do
+--    let opStr = show op
+--        opLen = length opStr
+--        spc   = take (50 - opLen) $ repeat ' '
+--    liftIO $ putStrLn $ opStr ++ spc ++ show st 
 
-bc :: OpCode -> Interpreter ()
+bc :: [Value] -> OpCode -> Interpreter [Value]
 {-# INLINE bc #-}
-bc (ARITH o)  = pop2    >>= \(r,l,st) -> push (calcArith l r o) st
-bc (PUSH v)   = push_   v
-bc POP        = pop_    >>  return ()
-bc FIELD      = pop     >>= \(top,st) -> fref top >>= flip push st
-bc FSET       = pop2_   >>= \(i,v) -> assignToField Set i v
-bc (FMOD o)   = pop2_   >>= \(i,v) -> assignToField o   i v
-bc (VAR r)    = push_   =<< (liftIO $! readIORef r)
-bc (VSET r)   = pop_    >>= \top -> liftIO $ writeIORef r top
-bc (VMOD o r) = pop_    >>= \top -> liftIO $ modifyIORef' r (\v -> calcArith v top o)
-bc (BVAR b)   = push_   =<< evalBVariableRef b
-bc (BSET b)   = pop_    >>= \top -> modBVar b (const top)
-bc (BMOD o b) = pop_    >>= \top -> modBVar b (\v -> calcArith v top o)
-bc (ARR r)    = pop     >>= \(idx,st)   -> aref r idx >>= flip push st
-bc (ASET r)   = pop2    >>= \(idx,v,st) -> aset r idx v >> push v st
-bc (AMOD o r) = pop2    >>= \(idx,v,st) -> amod r idx v o >>= flip push st
-bc (CMP o)    = pop2    >>= \(rv,lv,st) -> push (cmpValues lv rv o) st
-bc (LGC o)    = pop2    >>= \(rv,lv,st) -> push (calcLogic o lv rv) st
-bc NOT        = pop     >>= \(top,st)   -> push (vNot top) st
-bc NEG        = pop     >>= \(top,st)   -> push (vNeg top) st
-bc (CALL f n) = funcall f n
-bc (SPLIT a)  = pop2    >>= \(fs,s,st)  -> calcSplit s fs a >>= flip push st
-bc DUP        = stack   >>= \st@(top:_) -> push top st
-bc (PRN n)    = popN_ n >>= prn
-bc MATCH      = pop2    >>= \(rv,lv,st) -> push (match lv rv) st
-bc (IN r)     = pop     >>= \(idx,st)   -> alkp r idx >>= flip push st 
-bc (ADEL r)   = pop_    >>= \idx        -> adel r idx
-bc (ADRP r)   = liftIO $ writeIORef r M.empty 
-bc (FETCH r)  = afetch r
-bc (ANXT r)   = anxt r
-bc ACHK       = push_   =<< (gets hcKEYS >>= \ks -> return $! vBool (not $ null ks))
-bc KDRP       = modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
-                                 , hcKSTACK = tail (hcKSTACK s) }
-bc DRP        = modify $ \s -> s { hcSTACK = [] }
-bc op         = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
+bc (r:l:st)   (ARITH o)  = return $! (calcArith l r o):st
+bc st         (PUSH v)   = return $! v:st
+bc (top:st)   POP        = return $! st
+bc (top:st)   FIELD      = fref top >>= \v -> return $! v:st
+bc (i:v:st)   FSET       = assignToField Set i v >> (return $! st)
+bc (i:v:st)   (FMOD o)   = assignToField o   i v >> (return $! st)
+bc st         (VAR r)    = (liftIO $! readIORef r) >>= \v -> return $! v:st
+bc (top:st)   (VSET r)   = (liftIO $ writeIORef r top) >> (return $! st)
+bc (top:st)   (VMOD o r) = (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $! st)
+bc st         (BVAR b)   = evalBVariableRef b >>= \v -> return $! v:st
+bc (top:st)   (BSET b)   = modBVar b (const top) >> (return $! st)
+bc (top:st)   (BMOD o b) = modBVar b (\v -> calcArith v top o) >> (return $! st)
+bc (idx:st)   (ARR r)    = aref r idx >>= \v -> return $! v:st
+bc (idx:v:st) (ASET r)   = aset r idx v >> (return $! st) -- TODO: previously, value was pushed on stack
+bc (idx:v:st) (AMOD o r) = amod r idx v o >>= \v -> return $! v:st
+bc (rv:lv:st) (CMP o)    = return $! (cmpValues lv rv o):st
+bc (rv:lv:st) (LGC o)    = return $! (calcLogic o lv rv):st
+bc (top:st)   NOT        = return $! (vNot top):st
+bc (top:st)   NEG        = return $! (vNeg top):st
+bc st (CALL f n)         = funcall st f n
+bc (fs:s:st)  (SPLIT a)  = calcSplit s fs a >>= \v -> return $! v:st
+bc st@(top:_) DUP        = return $! top:st
+bc st         (PRN n)    = do let (vs,r) = splitAt n st
+                              prn vs >> (return $! r)
+bc (rv:lv:st) MATCH      = return $! (match lv rv):st
+bc (idx:st)   (IN r)     = alkp r idx >>= \v -> return $! v:st
+bc (idx:st)   (ADEL r)   = adel r idx >> (return $! st)
+bc st         (ADRP r)   = (liftIO $ writeIORef r M.empty) >> (return $! st)
+bc st         (FETCH r)  = afetch r >> (return $! st)
+bc st         (ANXT r)   = anxt r >> (return $! st)
+bc st         ACHK       = gets hcKEYS >>= \ks -> return $! (vBool (not $ null ks)):st
+bc st         KDRP       = do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
+                                               , hcKSTACK = tail (hcKSTACK s) }
+                              return $! st
+bc st         DRP        = return $! []
+-- bc op         = liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op
 
-execBC :: [OpCode] -> Interpreter () 
+execBC :: [Value] -> [OpCode] -> Interpreter [Value] 
 {-# INLINE execBC #-}
-execBC []             = return ()
-execBC (op@(JF  n):r) = dbg op >> pop_    >>= \top -> if toBool top then execBC r else jmp n
-execBC (op@(JMP n):r) = dbg op >> jmp n
-execBC (op:ops)       = dbg op >> bc op >> execBC ops 
+execBC st []             = return st
+execBC s@(top:st) (op@(JF  n):r) = dbg s op >> if toBool top then execBC st r else jmp n st
+execBC s@st (op@(JMP n):r)       = dbg s op >> jmp n st
+execBC s@st (op:ops)             = dbg s op >> bc st op >>= \st -> execBC st ops
 
-funcall :: BFunc -> Int -> Interpreter ()
+funcall :: [Value] -> BFunc -> Int -> Interpreter [Value]
 {-# INLINE funcall #-}
-funcall Atan2  2 = pop2  >>= \(vx,vy,st)    -> push (calcAtan2 vy  vx) st
-funcall Cos    1 = pop   >>= \(top,st)      -> push (proxyFcn cos  top) st
-funcall Exp    1 = pop   >>= \(top,st)      -> push (proxyFcn exp  top) st
-funcall Int    1 = pop   >>= \(top,st)      -> push (proxyFcn (fromIntegral.truncate) top) st
-funcall Log    1 = pop   >>= \(top,st)      -> push (proxyFcn log  top) st
-funcall Sin    1 = pop   >>= \(top,st)      -> push (proxyFcn sin  top) st
-funcall Sqrt   1 = pop   >>= \(top,st)      -> push (proxyFcn sqrt top) st
-funcall Srand  0 = push_ =<< (intSRand >> return (VDouble 0))  
-funcall Srand  1 = pop   >>= \(top,st)      -> push (VDouble 0) st >> intSRand' top
-funcall Rand   0 = push_ =<< evalRand       
-funcall Index  2 = pop2  >>= \(vt,vs,st)    -> push (calcIndex vs vt) st
-funcall Length 1 = pop   >>= \(top,st)      -> push (calcLength top) st
-funcall Substr 2 = pop2  >>= \(vp,vs,st)    -> push (calcSubstr vs vp) st
-funcall Substr 3 = pop3  >>= \(vn,vp,vs,st) -> push (calcSubstr2 vs vp vn) st
-funcall FMatch 2 = pop2  >>= \(vr,vs,st)    -> fmatch vs vr >>= flip push st
-funcall FSub   3 = pop3  >>= \(vl,vs,vr,_)  -> intFSub calcSub  vr vs (toString vl)
-funcall GSub   3 = pop3  >>= \(vl,vs,vr,_)  -> intFSub calcGSub vr vs (toString vl)
+funcall (vx:vy:st)    Atan2  2 = return $! (calcAtan2 vy vx):st
+funcall (top:st)      Cos    1 = return $! (proxyFcn cos top):st
+funcall (top:st)      Exp    1 = return $! (proxyFcn exp top):st
+funcall (top:st)      Int    1 = return $! (proxyFcn (fromIntegral.truncate) top):st
+funcall (top:st)      Log    1 = return $! (proxyFcn log top):st
+funcall (top:st)      Sin    1 = return $! (proxyFcn sin top):st
+funcall (top:st)      Sqrt   1 = return $! (proxyFcn sqrt top):st
+funcall st            Srand  0 = intSRand >> (return $! (VDouble 0):st)
+funcall (top:st)      Srand  1 = intSRand' top >> (return $! (VDouble 0):st)
+funcall st            Rand   0 = evalRand >>= \v -> return $! v:st
+funcall (vt:vs:st)    Index  2 = return $! (calcIndex vs vt):st
+funcall (top:st)      Length 1 = return $! (calcLength top):st
+funcall (vp:vs:st)    Substr 2 = return $! (calcSubstr vs vp):st
+funcall (vn:vp:vs:st) Substr 3 = return $! (calcSubstr2 vs vp vn):st
+funcall (vr:vs:st)    FMatch 2 = fmatch vs vr >>= \v -> return $! v:st
+funcall (vl:vs:vr:st) FSub   3 = intFSub calcSub vr vs (toString vl) st
+funcall (vl:vs:vr:st) GSub   3 = intFSub calcGSub vr vs (toString vl) st
 
 fmatch :: Value -> Value -> Interpreter Value
 fmatch s r = do
@@ -128,10 +97,9 @@ fmatch s r = do
                     }
    return $! vBool (rS /= 0)
 
-intFSub f vr vs vl = do
+intFSub f vr vs vl st = do
    let (r,s) = f vr vs vl
-   push_ (VDouble $ fromIntegral r)
-   push_ (valstr s)
+   return $! (valstr s):(VDouble $ fromIntegral r):st
 
 key :: Value -> String
 {-# INLINE key #-}
@@ -180,9 +148,9 @@ fref v = do
    then gets hcThisLine >>= (return . valstr)
    else liftM (*!! i) $ gets hcFields
 
-jmp :: Int -> Interpreter ()
+jmp :: Int -> [Value] -> Interpreter [Value]
 {-# INLINE jmp #-}
-jmp n = gets hcOPCODES >>= \src -> execBC (drop n src)
+jmp n st = gets hcOPCODES >>= \src -> execBC st (drop n src)
 
 prn [] =  gets hcThisLine >>= (liftIO . B.putStrLn)
 prn vs = do

@@ -24,7 +24,6 @@ data HawkContext = HawkContext
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
 
-                 , hcSTACK    :: [Value]
                  , hcSTARTUP  :: ![OpCode]
                  , hcOPCODES  :: ![OpCode]
                  , hcSHUTDOWN :: ![OpCode]
@@ -55,7 +54,7 @@ emptyContext s = HawkContext
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 
-                 , hcSTACK    = []
+--                 , hcSTACK    = []
                  , hcSTARTUP  = F.toList startup
                  , hcOPCODES  = F.toList opcodes
                  , hcSHUTDOWN = F.toList shutdown

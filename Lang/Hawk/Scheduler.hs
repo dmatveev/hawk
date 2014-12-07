@@ -104,7 +104,7 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
       workerLoop
       wrkFinish
 
-   wrkInit = gets hcSTARTUP >>= execBC
+   wrkInit = gets hcSTARTUP >>= execBC []
  
    workerLoop = do
       q <- liftIO $ takeMVar mq
@@ -120,9 +120,9 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
                        , hcNR       = VDouble (succ $ toDouble $ hcNR s)
                        , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
                        }
-      gets hcOPCODES >>= execBC
+      gets hcOPCODES >>= execBC []
 
-   wrkFinish = gets hcSHUTDOWN >>= execBC
+   wrkFinish = gets hcSHUTDOWN >>= execBC []
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
