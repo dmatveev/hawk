@@ -29,14 +29,13 @@ dbg _ _  = return ()
 x *: xs = seq x x:xs
 
 bc :: [Value] -> OpCode -> Interpreter [Value]
-{-# INLINE bc #-}
 bc (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $ (calcArith l r o)*:st
 bc st         (PUSH v)   = {-# SCC "PUSH"  #-} return $ v*:st
 bc (top:st)   POP        = {-# SCC "POP"   #-} return $ st
 bc (top:st)   FIELD      = {-# SCC "FIELD" #-} fref top >>= \v -> return $ v*:st
 bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $ st)
 bc (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField o   i v >> (return $ st)
-bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $! readIORef r) >>= \v -> return $ v*:st
+bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $ readIORef r) >>= \v -> return $ v*:st
 bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ st)
 bc (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $ st)
 bc st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef b >>= \v -> return $ v*:st
@@ -64,14 +63,14 @@ bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $ (
 bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
-bc st         DRP        = {-# SCC "DRP" #-} return $! []
+bc st         DRP        = {-# SCC "DRP" #-} return $ []
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
 execBC :: [Value] -> [OpCode] -> Interpreter [Value] 
 execBC st         []             = return st
-execBC s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} if toBool top then execBC  st r else jmp n st
-execBC s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} jmp n st
-execBC s@st       (op:ops)       = {-# SCC "OP"  #-} bc st op >>= \st -> execBC st ops
+execBC s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} dbg s  op >> if toBool top then execBC  st r else jmp n st
+execBC s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} dbg s  op >> jmp n st
+execBC st         (op:ops)       = {-# SCC "OP"  #-} dbg st op >> bc st op >>= \st' -> execBC st' ops
 
 jmp :: Int -> [Value] -> Interpreter [Value]
 {-# INLINE jmp #-}
