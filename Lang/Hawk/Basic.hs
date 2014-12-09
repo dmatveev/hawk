@@ -24,3 +24,6 @@ data BFunc = Atan2 | Cos | Exp | Int | Log | Sin | Sqrt
 
 data Notation = Pre | Post
                 deriving (Eq, Show)
+
+data FileMod = ModAppend | ModRewrite
+               deriving (Eq, Show)

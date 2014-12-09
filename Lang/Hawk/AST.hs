@@ -48,6 +48,7 @@ data Statement = Expression Expression
                | FOREACH' (IORef Value) (IORef Array) Statement
                | DO Statement Expression
                | PRINT [Expression]
+               | FPRINT [Expression] FileMod Expression 
                | BREAK
                | CONT
                | NEXT

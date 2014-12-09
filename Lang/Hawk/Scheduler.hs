@@ -3,6 +3,7 @@
 module Lang.Hawk.Scheduler where
 
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
@@ -122,7 +123,8 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
                                             }
       gets hcOPCODES >>= execBC []
 
-   wrkFinish = gets hcSHUTDOWN >>= execBC []
+   wrkFinish = do gets hcSHUTDOWN >>= execBC []
+                  gets hcHandles >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do

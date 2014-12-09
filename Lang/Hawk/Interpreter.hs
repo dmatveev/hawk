@@ -10,6 +10,7 @@ import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 import System.Random
+import System.IO (Handle)
 
 import Lang.Hawk.AST
 import Lang.Hawk.Basic
@@ -20,6 +21,7 @@ import Lang.Hawk.Runtime
 
 data HawkContext = HawkContext
                  { hcFields   :: (IM.IntMap Value)
+                 , hcHandles  :: !(M.Map B.ByteString Handle)
 
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
@@ -50,11 +52,10 @@ data HawkContext = HawkContext
 emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcFields   = IM.empty
-
+                 , hcHandles  = M.empty
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 
---                 , hcSTACK    = []
                  , hcSTARTUP  = F.toList startup
                  , hcOPCODES  = F.toList opcodes
                  , hcSHUTDOWN = F.toList shutdown

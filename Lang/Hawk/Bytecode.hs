@@ -37,6 +37,7 @@ data OpCode = ARITH ArithOp
             | DUP
             | NOOP
             | PRN   Int
+            | FPRN  Int FileMod
             | JMP   Int
             | JF    Int
             | DRP

@@ -8,12 +8,13 @@ import qualified Data.Map as M
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
 
+import System.IO
+
 import Lang.Hawk.Basic
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
-
 
 dbg :: [Value] -> OpCode -> Interpreter ()
 {-# INLINE dbg #-}
@@ -53,6 +54,8 @@ bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} calcSplit s fs a >>= \v -> return
 bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top*:st
 bc st         (PRN n)    = {-# SCC "PRN"   #-} do let (vs,r) = splitAt n st
                                                   prn vs >> (return $ r)
+bc st         (FPRN n m) = {-# SCC "FPRN"  #-} do let (vs,r) = splitAt (n+1) st
+                                                  fprn m vs >> (return $ r)
 bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv)*:st
 bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v*:st
 bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
@@ -156,9 +159,35 @@ fref v = do
    then gets hcThisLine >>= (return . valstr)
    else liftM (*!! i) $ gets hcFields
 
+prn :: [Value] -> Interpreter ()
 prn [] =  gets hcThisLine >>= (liftIO . B.putStrLn)
 prn vs = do
    ofs <- liftM toString $ gets hcOFS
    ors <- liftM toString $ gets hcORS
    let str = B.intercalate ofs $ map toString vs
    liftIO $ B.putStr $ B.append str ors
+
+fprn :: FileMod -> [Value] -> Interpreter ()
+fprn m (f:[]) = gets hcThisLine >>= writeToHandle m (toString f)
+fprn m (f:vs) = do
+   ofs <- liftM toString $ gets hcOFS
+   let str = B.intercalate ofs $ map toString vs
+   writeToHandle m (toString f) str
+
+writeToHandle :: FileMod -> B.ByteString -> B.ByteString -> Interpreter ()
+writeToHandle m f str = do
+   h <- intGetHandle f m
+   ors <- liftM toString $ gets hcORS
+   liftIO $ B.hPutStr h (B.append str ors)
+
+intGetHandle :: B.ByteString -> FileMod -> Interpreter Handle
+intGetHandle f m = do
+   mh <- liftM (M.lookup f) $ gets hcHandles
+   case mh of 
+     Just h  -> return h
+     Nothing -> do h <- liftIO $ openFile (B.unpack f) (toMode m)
+                   modify $ \s -> s { hcHandles = M.insert f h (hcHandles s) }
+                   return h
+
+toMode ModAppend  = AppendMode
+toMode ModRewrite = WriteMode

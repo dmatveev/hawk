@@ -154,7 +154,20 @@ postfix name fun       = Postfix (do {rsvdOp name; return fun})
 stExpr = Expression <$> expr
 
 stPrint = PRINT <$> (rsvd "print" *> whitespace *> args <* whitespace) <?> "print"
-   where args = expr `sepBy` (symbol ",")
+   where args = term `sepBy` (symbol ",")
+
+fileMod = try modAppend <|> modOvwrt
+   where modAppend = symbol ">>" >> return ModAppend
+         modOvwrt  = symbol ">"  >> return ModRewrite
+
+stFPrint = do
+   rsvd "print"
+   whitespace
+   args <- term `sepBy` (symbol ",")
+   mod <- fileMod
+   fname <- expr
+   return $ FPRINT args mod fname
+   <?> "print with redirect"
 
 stBlock = Block <$> (symbol "{" *> many statement <* symbol "}") <?> "block of statements"
 
@@ -206,10 +219,11 @@ statement = try stIf
           <|> try stExit
           <|> try stDelete
           <|> try stReturn
+          <|> try stFPrint
+          <|> try stPrint
           <|> stNop
           <|> stBlock
           <|> stExpr
-          <|> stPrint
           <?> "statement"
 
 -- Top-level AWK constructs

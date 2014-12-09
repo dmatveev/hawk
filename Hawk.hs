@@ -28,6 +28,7 @@ runTrace progFile = do
   case parse awk progFile source of
      (Left e)  -> putStrLn $ show e
      (Right a) -> do src <- awkPrepare a
+                     liftIO $ putStrLn $ show src
                      let bc = runCompiler (mapM_ compileTL src) csInitial
                      forM_ (zip [0::Int,1..] (toList bc)) $ \(i, c) -> do
                         printf "%4d  %s\n" i (show c)
