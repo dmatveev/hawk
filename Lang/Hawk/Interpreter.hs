@@ -11,7 +11,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 import System.Random
 import System.IO (Handle)
-
+import System.Process (ProcessHandle)
 import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
@@ -22,6 +22,7 @@ import Lang.Hawk.Runtime
 data HawkContext = HawkContext
                  { hcFields   :: (IM.IntMap Value)
                  , hcHandles  :: !(M.Map B.ByteString Handle)
+                 , hcPHandles :: !(M.Map B.ByteString (ProcessHandle,Handle))
 
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
@@ -53,6 +54,7 @@ emptyContext :: AwkSource -> HawkContext
 emptyContext s = HawkContext
                  { hcFields   = IM.empty
                  , hcHandles  = M.empty
+                 , hcPHandles = M.empty
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 

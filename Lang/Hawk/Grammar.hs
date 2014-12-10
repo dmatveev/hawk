@@ -170,6 +170,9 @@ fileMod = try modAppend <|> modOvwrt
 stFPrint = FPRINT <$> stPrnCommon <*> fileMod <*> expr
    <?> "print with redirect"
 
+stPPrint = PPRINT <$> stPrnCommon <* symbol "|" <*> expr
+   <?> "print to process"
+
 stBlock = Block <$> (symbol "{" *> many statement <* symbol "}") <?> "block of statements"
 
 stIf = IF <$> (rsvd "if" >> parens expr) <*> statement <*> tryElse
@@ -220,8 +223,7 @@ statement = try stIf
           <|> try stExit
           <|> try stDelete
           <|> try stReturn
-          <|> try stFPrint
-          <|> try stPrint
+          <|> try stFPrint <|> try stPPrint <|> stPrint
           <|> stNop
           <|> stBlock
           <|> stExpr

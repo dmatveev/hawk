@@ -9,6 +9,7 @@ import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
 
 import System.IO
+import System.Process
 
 import Lang.Hawk.Basic
 import Lang.Hawk.Bytecode
@@ -56,6 +57,8 @@ bc st         (PRN n)    = {-# SCC "PRN"   #-} do let (vs,r) = splitAt n st
                                                   prn vs >> (return $ r)
 bc st         (FPRN n m) = {-# SCC "FPRN"  #-} do let (vs,r) = splitAt (n+1) st
                                                   fprn m vs >> (return $ r)
+bc st         (PPRN n)   = {-# SCC "PPRN"  #-} do let (vs,r) = splitAt (n+1) st
+                                                  pprn vs >> (return $ r)
 bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv)*:st
 bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v*:st
 bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
@@ -174,9 +177,22 @@ fprn m (f:vs) = do
    let str = B.intercalate ofs $ map toString vs
    writeToHandle m (toString f) str
 
+pprn :: [Value] -> Interpreter ()
+pprn (f:[]) = gets hcThisLine >>= writeToProcess (toString f)
+pprn (f:vs) = do
+   ofs <- liftM toString $ gets hcOFS
+   let str = B.intercalate ofs $ map toString vs
+   writeToProcess (toString f) str
+
 writeToHandle :: FileMod -> B.ByteString -> B.ByteString -> Interpreter ()
 writeToHandle m f str = do
    h <- intGetHandle f m
+   ors <- liftM toString $ gets hcORS
+   liftIO $ B.hPutStr h (B.append str ors)
+
+writeToProcess :: B.ByteString -> B.ByteString -> Interpreter ()
+writeToProcess f str = do
+   h <- intGetProcessHandle f
    ors <- liftM toString $ gets hcORS
    liftIO $ B.hPutStr h (B.append str ors)
 
@@ -188,6 +204,17 @@ intGetHandle f m = do
      Nothing -> do h <- liftIO $ openFile (B.unpack f) (toMode m)
                    modify $ \s -> s { hcHandles = M.insert f h (hcHandles s) }
                    return h
+
+intGetProcessHandle :: B.ByteString -> Interpreter Handle
+intGetProcessHandle cmd = do
+   mh <- liftM (M.lookup cmd) $ gets hcPHandles
+   case mh of 
+     Just (_,h) -> return h
+     Nothing    -> do
+       (Just hin, _, _, ph) <- liftIO $ createProcess $ (shell cmd') {std_in = CreatePipe}
+       modify $ \s -> s { hcPHandles = M.insert cmd (ph,hin) (hcPHandles s) }
+       return hin
+ where cmd' = B.unpack cmd
 
 toMode ModAppend  = AppendMode
 toMode ModRewrite = WriteMode

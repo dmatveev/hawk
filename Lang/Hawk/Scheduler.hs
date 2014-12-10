@@ -21,6 +21,7 @@ import Lang.Hawk.Runtime
 import Control.Concurrent
 
 import System.IO
+import System.Process
 
 -- In the simplest case, we have two threads:
 -- READER - reads the input, parses lines and fields
@@ -124,7 +125,10 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
       gets hcOPCODES >>= execBC []
 
    wrkFinish = do gets hcSHUTDOWN >>= execBC []
-                  gets hcHandles >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+                  gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+                  gets hcPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+                      hClose h
+                      waitForProcess p
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do

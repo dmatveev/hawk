@@ -188,6 +188,7 @@ compileS (FOREACH' r a st) = compileFOREACH r a st
 compileS (DO s e)          = compileDO s e
 compileS (PRINT es)        = mapM_ compileE (reverse es) >> op (PRN (length es))
 compileS (FPRINT es m fe)  = mapM_ compileE (reverse es) >> compileE fe >> op (FPRN (length es) m)
+compileS (PPRINT es fe)    = mapM_ compileE (reverse es) >> compileE fe >> op (PPRN (length es))
 compileS (BREAK)           = loopBreak
 compileS (CONT)            = loopCont
 compileS (NOP)             = op $ DRP
