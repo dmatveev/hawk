@@ -95,7 +95,9 @@ regexp  = RE    <$> regex <?> "regexp"
 range   = RANGE <$> sp <* rsvdOp "," <*> sp <?> "range pattern" where sp = exprp <|> regexp
 
 -- Expression grammar
-expr = buildExpressionParser table term <?> "expression"
+expr    = buildExpressionParser defaultTable term <?> "expression"
+prnExpr = buildExpressionParser printTable   term <?> "expression (print)"
+
 
 term = parens expr
      <|> try funcalls
@@ -124,22 +126,25 @@ builtInVars      = choice $ map builtInVar hawkBuiltinVars
 
 -- Decreasing presedence order!
 -- The reversed version of The AWK Book's table 2-8.
-table = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
-          , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
-        , [arith "^" Pow]
-        , [prefix "!" Not]
-        , [prefix "-" Neg, prefix "+" Id]
-        , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
-        , [arith "+" Add, arith "-" Sub ]
-        , [binary ":" Concat AssocRight] -- explicit concatenation operator
-        , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE, rel ">" CmpGT]
-        , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
-        , [binary "in" In AssocRight]
-        , [logic "&&" AND]
-        , [logic "||" OR]
-        , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
-          , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
-        ]
+table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
+             , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
+           , [arith "^" Pow]
+           , [prefix "!" Not]
+           , [prefix "-" Neg, prefix "+" Id]
+           , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
+           , [arith "+" Add, arith "-" Sub ]
+           , [binary ":" Concat AssocRight] -- explicit concatenation operator
+           , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
+           , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
+           , [binary "in" In AssocRight]
+           , [logic "&&" AND]
+           , [logic "||" OR]
+           , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
+             , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
+           ]
+
+defaultTable = table [rel ">" CmpGT]
+printTable   = table []
 
 rel   s o = binary s (Relation   o) AssocLeft
 arith s o = binary s (Arith      o) AssocLeft
@@ -153,20 +158,16 @@ postfix name fun       = Postfix (do {rsvdOp name; return fun})
 -- Statements
 stExpr = Expression <$> expr
 
-stPrint = PRINT <$> (rsvd "print" *> whitespace *> args <* whitespace) <?> "print"
-   where args = term `sepBy` (symbol ",")
+stPrnCommon = rsvd "print" *> whitespace *> args <* whitespace
+   where args = prnExpr `sepBy` (symbol ",")
+
+stPrint = PRINT <$> stPrnCommon <?> "print"
 
 fileMod = try modAppend <|> modOvwrt
    where modAppend = symbol ">>" >> return ModAppend
          modOvwrt  = symbol ">"  >> return ModRewrite
 
-stFPrint = do
-   rsvd "print"
-   whitespace
-   args <- term `sepBy` (symbol ",")
-   mod <- fileMod
-   fname <- expr
-   return $ FPRINT args mod fname
+stFPrint = FPRINT <$> stPrnCommon <*> fileMod <*> expr
    <?> "print with redirect"
 
 stBlock = Block <$> (symbol "{" *> many statement <* symbol "}") <?> "block of statements"
