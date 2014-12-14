@@ -105,6 +105,7 @@ compileE (FunCall f@GSub vs) = compileFSub f vs
 compileE (FunCall f@FSub  vs) = compileFSub f vs
 compileE (FunCall Split  vs) = compileSPLIT vs
 compileE (FunCall s      vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
+compileE (Getline)           = op $ GETL
 
 compileFSub f [a1,a2] = do
    compileE a1

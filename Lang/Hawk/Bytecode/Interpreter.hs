@@ -16,6 +16,7 @@ import Lang.Hawk.Bytecode
 import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
+import Lang.Hawk.Runtime.Input
 
 dbg :: [Value] -> OpCode -> Interpreter ()
 {-# INLINE dbg #-}
@@ -75,11 +76,12 @@ execBC' src = seq src $ execBC src [] src
 
 execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
 execBC src st         []             = return (True, st)
-execBC src st         (op@EX:_)      = {-# SCC "EX"  #-} dbg st op >> return (False, st)
-execBC src st         (op@NXT:_)     = {-# SCC "NXT" #-} dbg st op >> return (True, st)
-execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
-execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} dbg s  op >> jmp src n st
-execBC src st         (op:ops)       = {-# SCC "OP"  #-} dbg st op >> bc st op >>= \st' -> execBC src st' ops
+execBC src st         (op@EX:_)      = {-# SCC "EX"   #-} dbg st op >> return (False, st)
+execBC src st         (op@NXT:_)     = {-# SCC "NXT"  #-} dbg st op >> return (True, st)
+execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"   #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
+execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP"  #-} dbg s  op >> jmp src n st
+execBC src st         (op@(GETL):r)  = {-# SCC "GETL" #-} dbg st op >> getline >>= \top -> execBC src (top:st) r
+execBC src st         (op:ops)       = {-# SCC "OP"   #-} dbg st op >> bc st op >>= \st' -> execBC src st' ops
 
 jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
@@ -221,3 +223,26 @@ intGetProcessHandle cmd = do
 
 toMode ModAppend  = AppendMode
 toMode ModRewrite = WriteMode
+
+setupContext :: Record -> [Record] ->Interpreter ()
+{-# INLINE setupContext #-}
+setupContext (Record _ l nf flds) rs = {-# SCC "CTXMOD" #-} modify $ \s ->
+   s { hcThisLine = l
+     , hcFields   = flds
+     , hcNF       = VDouble (fromIntegral $ nf)
+     , hcNR       = VDouble (succ $ toDouble $ hcNR s)
+     , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
+     , hcWorkload = rs
+     }
+
+getline :: Interpreter Value
+getline = do
+      w <- gets hcWorkload
+      case w of
+        [] -> do i  <- gets hcInput
+                 mw <- liftIO $ fetch i
+                 case mw of
+                    Nothing                  -> return $ VDouble $! -1
+                    Just (Workload _ (r:rs)) -> handleRecord r rs
+        (r:rs) -> handleRecord r rs 
+ where handleRecord r rs = setupContext r rs >> return (VDouble $! 1)

@@ -45,6 +45,7 @@ data OpCode = ARITH ArithOp
             | SPLIT (IORef Array)
             | NXT
             | EX
+            | GETL
             deriving (Show)
 
 type Bytecode = Seq OpCode

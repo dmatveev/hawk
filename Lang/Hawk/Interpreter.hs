@@ -18,13 +18,17 @@ import Lang.Hawk.Value
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Bytecode.Compiler
 import Lang.Hawk.Runtime
+import Lang.Hawk.Runtime.Input
 
 data HawkContext = HawkContext
-                 { hcFields   :: (IM.IntMap Value)
+                 { hcInput    :: !InputSource
+                 , hcWorkload :: ![Record]
+
+                 , hcFields   :: (IM.IntMap Value)
                  , hcHandles  :: !(M.Map B.ByteString Handle)
                  , hcPHandles :: !(M.Map B.ByteString (ProcessHandle,Handle))
 
-                 , hcThisLine :: B.ByteString
+                 , hcThisLine :: !B.ByteString
                  , hcStdGen   :: StdGen
 
                  , hcSTARTUP  :: [OpCode]
@@ -50,9 +54,12 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-emptyContext :: AwkSource -> HawkContext
-emptyContext s = HawkContext
-                 { hcFields   = IM.empty
+emptyContext :: AwkSource -> InputSource -> HawkContext
+emptyContext s i = HawkContext
+                 { hcInput    = i
+                 , hcWorkload = []
+
+                 , hcFields   = IM.empty
                  , hcHandles  = M.empty
                  , hcPHandles = M.empty
                  , hcThisLine = ""
@@ -88,7 +95,6 @@ newtype Interpreter a = Interpreter (StateT HawkContext IO a)
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
 runInterpreter (Interpreter stt) c = execStateT stt c
-
 
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m

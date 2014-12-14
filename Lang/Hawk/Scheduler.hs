@@ -7,7 +7,6 @@ import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Exception.Base (evaluate)
 import Control.Monad.State.Strict
 
 import Lang.Hawk.Basic
@@ -17,6 +16,7 @@ import Lang.Hawk.Analyzer
 import Lang.Hawk.Value
 import Lang.Hawk.Bytecode.Interpreter
 import Lang.Hawk.Runtime
+import Lang.Hawk.Runtime.Input
 
 import Control.Concurrent
 
@@ -28,9 +28,6 @@ import System.Process
 -- WORKER - takes data from reader, executes the AWK code 
 --
 -- READER and WORKER communicate via queue(s). The basic queue element is Workload.
-
-data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value) deriving Show
-data Workload = Workload { wID :: !Integer, wRS :: ![Record] } deriving Show
 
 inThread :: IO () -> IO ()
 inThread io = do
@@ -98,7 +95,7 @@ runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
 worker :: AwkSource -> MVar (Maybe Workload) -> IO ()
-worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
+worker src mq = runInterpreter wrkMain (emptyContext src $ External mq) >> return ()
  where
    wrkMain = do
       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
@@ -106,29 +103,26 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
       cont <- wrkInit
       when cont $  workerLoop >> wrkFinish
 
-   wrkInit = do
-      (cont,_) <- (gets hcSTARTUP >>= execBC')
-      return cont
+   wrkInit = liftM fst $ gets hcSTARTUP >>= execBC'
 
    workerLoop = do
-      q <- liftIO $ takeMVar mq
+      q <- (gets hcInput >>= liftIO . fetch)
       case q of
          Nothing  -> return ()
-         (Just w) -> wrkProc (wRS w) >>= \cont -> when cont workerLoop
+         (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
+                        wrkProc >>= \cont -> when cont workerLoop
 
-   wrkProc []                         = return True
-   wrkProc ((Record nr l nf flds):rs) = do
-      {-# SCC "CTXMOD" #-} modify $ \s -> s { hcThisLine = l
-                                            , hcFields   = flds
-                                            , hcNF       = VDouble (fromIntegral $ nf)
-                                            , hcNR       = VDouble (succ $ toDouble $ hcNR s)
-                                            , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
-                                            }
-      (cont, _) <- (gets hcOPCODES >>= execBC')
-      if cont then wrkProc rs else return False 
+   wrkProc = do
+      w <- gets hcWorkload
+      case w of
+        [] -> return True
+        (r:rs) -> do
+           setupContext r rs  
+           (cont, _) <- (gets hcOPCODES >>= execBC')
+           if cont then wrkProc else return False 
 
    wrkFinish = do
-      gets hcOPCODES >>= execBC'
+      gets hcSHUTDOWN >>= execBC'
       gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
       gets hcPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
           hClose h

@@ -37,6 +37,7 @@ data Expression = Arith ArithOp Expression Expression
                 | NoMatch Expression Expression
                 | FunCall BFunc [Expression]
                 | InlineIf Expression Expression Expression
+                | Getline
                   deriving (Eq, Show)
 
 data Statement = Expression Expression

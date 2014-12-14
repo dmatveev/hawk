@@ -101,6 +101,7 @@ prnExpr = buildExpressionParser printTable   term <?> "expression (print)"
 
 term = parens expr
      <|> try funcalls
+     <|> try getline
      <|> literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
 
 literal = stringLit <|> numericLit <|> regexLit <?> "literal"
@@ -123,6 +124,9 @@ funcalls = choice $ map funcall hawkFunctions
 
 builtInVar (s,b) = rsvd s >> return (BuiltInVar b)
 builtInVars      = choice $ map builtInVar hawkBuiltinVars
+
+getline = try plainGetline
+   where plainGetline = rsvd "getline" >> return Getline
 
 -- Decreasing presedence order!
 -- The reversed version of The AWK Book's table 2-8.
