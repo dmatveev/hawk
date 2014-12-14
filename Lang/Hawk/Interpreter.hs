@@ -28,8 +28,8 @@ data HawkContext = HawkContext
                  , hcStdGen   :: StdGen
 
                  , hcSTARTUP  :: ![OpCode]
-                 , hcOPCODES  :: ![OpCode]
                  , hcSHUTDOWN :: ![OpCode]
+                 , hcOPCODES  :: ![OpCode]
 
                  , hcKEYS     :: ![String]
                  , hcKSTACK   :: ![[String]]

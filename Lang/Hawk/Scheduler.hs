@@ -103,12 +103,13 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
    wrkMain = do
       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
       modify $ \s -> s { hcFNR = VDouble 0 }
-      wrkInit
-      workerLoop
-      wrkFinish
+      cont <- wrkInit
+      when cont $  workerLoop >> wrkFinish
 
-   wrkInit = gets hcSTARTUP >>= execBC []
- 
+   wrkInit = do
+      (cont,_) <- (gets hcSTARTUP >>= execBC')
+      return cont
+
    workerLoop = do
       q <- liftIO $ takeMVar mq
       case q of
@@ -123,15 +124,15 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
                                             , hcNR       = VDouble (succ $ toDouble $ hcNR s)
                                             , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
                                             }
-      opc <- gets hcOPCODES
-      (cont, _) <- execBC [] opc
+      (cont, _) <- (gets hcOPCODES >>= execBC')
       if cont then wrkProc rs else return False 
 
-   wrkFinish = do gets hcSHUTDOWN >>= execBC []
-                  gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
-                  gets hcPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
-                      hClose h
-                      waitForProcess p
+   wrkFinish = do
+      gets hcOPCODES >>= execBC'
+      gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+      gets hcPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+          hClose h
+          waitForProcess p
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do

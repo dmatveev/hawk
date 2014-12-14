@@ -69,17 +69,21 @@ bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = 
 bc st         DRP        = {-# SCC "DRP"   #-} return $ []
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
-execBC :: [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
-execBC st         []             = return (True, st)
-execBC st         (op@EX:_)      = {-# SCC "EX"  #-} dbg st op >> return (False, st)
-execBC st         (op@NXT:_)     = {-# SCC "NXT" #-} dbg st op >> return (True, st)
-execBC s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} dbg s  op >> if toBool top then execBC  st r else jmp n st
-execBC s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} dbg s  op >> jmp n st
-execBC st         (op:ops)       = {-# SCC "OP"  #-} dbg st op >> bc st op >>= \st' -> execBC st' ops
+execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
+{-# INLINE execBC' #-}
+execBC' src = seq src $ execBC src [] src
 
-jmp :: Int -> [Value] -> Interpreter (Bool, [Value])
+execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
+execBC src st         []             = return (True, st)
+execBC src st         (op@EX:_)      = {-# SCC "EX"  #-} dbg st op >> return (False, st)
+execBC src st         (op@NXT:_)     = {-# SCC "NXT" #-} dbg st op >> return (True, st)
+execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
+execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} dbg s  op >> jmp src n st
+execBC src st         (op:ops)       = {-# SCC "OP"  #-} dbg st op >> bc st op >>= \st' -> execBC src st' ops
+
+jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
-jmp n st = gets hcOPCODES >>= \src -> let r = drop n src in (execBC st r)
+jmp src n st = let r = drop n src in (execBC src st r)
 
 
 funcall :: [Value] -> BFunc -> Int -> Interpreter [Value]
