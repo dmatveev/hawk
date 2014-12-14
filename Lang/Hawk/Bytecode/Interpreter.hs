@@ -68,6 +68,9 @@ bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = 
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
 bc st         DRP        = {-# SCC "DRP"   #-} return $ []
+bc st         GETL       = {-# SCC "GETL"  #-} getline      >>= \v -> return $ v*:st
+bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r   >>= \v -> return $ v*:st
+bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top >>= \v -> return $ v*:st
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
@@ -75,14 +78,12 @@ execBC' :: [OpCode] -> Interpreter (Bool, [Value])
 execBC' src = seq src $ execBC src [] src
 
 execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
-execBC src st         []               = return (True, st)
-execBC src st         (op@EX:_)        = {-# SCC "EX"    #-} dbg st op >> return (False, st)
-execBC src st         (op@NXT:_)       = {-# SCC "NXT"   #-} dbg st op >> return (True, st)
-execBC src s@(top:st) (op@(JF  n):r)   = {-# SCC "JF"    #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
-execBC src s@st       (op@(JMP n):_)   = {-# SCC "JMP"   #-} dbg s  op >> jmp src n st
-execBC src st         (op@(GETL):r)    = {-# SCC "GETL"  #-} dbg st op >> getline    >>= \top -> execBC src (top:st) r
-execBC src st         (op@(GETLV v):r) = {-# SCC "GETLV" #-} dbg st op >> getlineV v >>= \top -> execBC src (top:st) r
-execBC src st         (op:ops)         = {-# SCC "OP"    #-} dbg st op >> bc st op   >>= \st' -> execBC src st' ops
+execBC src st         []             = return (True, st)
+execBC src st         (op@EX:_)      = {-# SCC "EX"    #-} dbg st op >> return (False, st)
+execBC src st         (op@NXT:_)     = {-# SCC "NXT"   #-} dbg st op >> return (True, st)
+execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"    #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
+execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP"   #-} dbg s  op >> jmp src n st
+execBC src st         (op:ops)       = {-# SCC "OP"    #-} dbg st op >> bc st op   >>= \st' -> execBC src st' ops
 
 jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
@@ -264,3 +265,28 @@ getlineV ref = do
                           , hcFNR = VDouble (succ $ toDouble $ hcFNR s)
                           }
          return $ VDouble $! 1
+
+fgetline :: Value -> Interpreter Value
+fgetline vf = do
+   is <- fGetInput (toString vf)
+   rs <- gets hcRS
+   ml <- liftIO $ nextLine is (toString rs)
+   case ml of
+      Nothing  -> return $ VDouble $ -1
+      (Just l) -> do flds <- splitIntoFields l
+                     let fldm = IM.fromList (zip [1,2..] (map valstr flds))
+                     modify $ \s -> s { hcThisLine = l
+                                      , hcFields   = fldm
+                                      , hcNF       = VDouble $ fromIntegral $ length flds
+                                      }
+                     return $ VDouble 1
+
+fGetInput :: B.ByteString -> Interpreter InputSource
+fGetInput f = do 
+   mi <- liftM (M.lookup f) $ gets hcFInputs
+   case mi of 
+     Just is  -> return is
+     Nothing  -> do is <- liftIO $ openInputFile f
+                    modify $ \s -> s { hcFInputs = M.insert f is (hcFInputs s)}
+                    return is
+

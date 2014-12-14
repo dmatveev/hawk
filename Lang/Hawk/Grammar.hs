@@ -125,8 +125,8 @@ funcalls = choice $ map funcall hawkFunctions
 builtInVar (s,b) = rsvd s >> return (BuiltInVar b)
 builtInVars      = choice $ map builtInVar hawkBuiltinVars
 
-getline = try varGetline
-          <|> plainGetline
+getline   = try varGetline
+        <|> plainGetline
    where varGetline   = GetlineVar <$> (gl *> variableRef)
          plainGetline = gl >> return Getline
          gl = rsvd "getline"
@@ -141,6 +141,7 @@ table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
            , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
            , [arith "+" Add, arith "-" Sub ]
            , [binary ":" Concat AssocRight] -- explicit concatenation operator
+           , [prefix "getline <" FGetline]
            , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
            , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
            , [binary "in" In AssocRight]

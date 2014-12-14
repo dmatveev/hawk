@@ -27,6 +27,7 @@ data HawkContext = HawkContext
                  , hcFields   :: (IM.IntMap Value)
                  , hcHandles  :: !(M.Map B.ByteString Handle)
                  , hcPHandles :: !(M.Map B.ByteString (ProcessHandle,Handle))
+                 , hcFInputs  :: !(M.Map B.ByteString InputSource)
 
                  , hcThisLine :: !B.ByteString
                  , hcStdGen   :: StdGen
@@ -62,6 +63,8 @@ emptyContext s i = HawkContext
                  , hcFields   = IM.empty
                  , hcHandles  = M.empty
                  , hcPHandles = M.empty
+                 , hcFInputs  = M.empty
+
                  , hcThisLine = ""
                  , hcStdGen   = mkStdGen 0
 

@@ -160,6 +160,7 @@ traceE (InlineIf c t f)     = cmb' (traceE c) (cmb' (traceE t) (traceE f))
 traceE (FunCall f vs)       = trf f vs >> updFunCalls
 traceE (Getline)            = return GLOBAL
 traceE (GetlineVar (VariableRef s)) = updVarTag s GLOBAL
+traceE (FGetline f)         = traceE f >> return GLOBAL
 
 trf GSub  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
 trf GSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
@@ -169,7 +170,7 @@ trf FSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE
 trf FSub  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
 trf Split [a1,(VariableRef a)]    = traceE a1 >> updArr a
 trf Split [a1,(VariableRef a),a3] = traceE a1 >> traceE a3 >> updArr a
-trf _ vs                            = mapM_ traceE vs >> updFunCalls
+trf _     vs                      = mapM_ traceE vs >> updFunCalls
 
 traceS :: Statement -> Tracer ()
 traceS (Expression e)         = traceE e >> return ()
@@ -266,6 +267,7 @@ putRefsE (FunCall s args)         = prf s args
 putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c <*> putRefsE t <*> putRefsE f
 putRefsE (Getline)                = return Getline
 putRefsE (GetlineVar v)           = GetlineVar <$> putRefsE v
+putRefsE (FGetline f)             = FGetline   <$> putRefsE f
 
 prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
                                             <*> sequence [putRefsE a1, (Array' <$> arr a)]
