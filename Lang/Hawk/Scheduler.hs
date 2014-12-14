@@ -112,17 +112,20 @@ worker src mq = runInterpreter wrkMain (emptyContext src) >> return ()
    workerLoop = do
       q <- liftIO $ takeMVar mq
       case q of
-        (Just (Workload _ rs)) -> forM rs wrkProc >> workerLoop
-        Nothing                -> return ()
+         Nothing  -> return ()
+         (Just w) -> wrkProc (wRS w) >>= \cont -> when cont workerLoop
 
-   wrkProc (Record nr l nf flds) = do
+   wrkProc []                         = return True
+   wrkProc ((Record nr l nf flds):rs) = do
       {-# SCC "CTXMOD" #-} modify $ \s -> s { hcThisLine = l
                                             , hcFields   = flds
                                             , hcNF       = VDouble (fromIntegral $ nf)
                                             , hcNR       = VDouble (succ $ toDouble $ hcNR s)
                                             , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
                                             }
-      gets hcOPCODES >>= execBC []
+      opc <- gets hcOPCODES
+      (cont, _) <- execBC [] opc
+      if cont then wrkProc rs else return False 
 
    wrkFinish = do gets hcSHUTDOWN >>= execBC []
                   gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)

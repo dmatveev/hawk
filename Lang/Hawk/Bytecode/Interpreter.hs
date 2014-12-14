@@ -53,12 +53,9 @@ bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top)*:st
 bc st         (CALL f n) = {-# SCC "CALL"  #-} funcall st f n
 bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} calcSplit s fs a >>= \v -> return $ v*:st
 bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top*:st
-bc st         (PRN n)    = {-# SCC "PRN"   #-} do let (vs,r) = splitAt n st
-                                                  prn vs >> (return $ r)
-bc st         (FPRN n m) = {-# SCC "FPRN"  #-} do let (vs,r) = splitAt (n+1) st
-                                                  fprn m vs >> (return $ r)
-bc st         (PPRN n)   = {-# SCC "PPRN"  #-} do let (vs,r) = splitAt (n+1) st
-                                                  pprn vs >> (return $ r)
+bc st         (PRN n)    = {-# SCC "PRN"   #-} let (vs,r) = splitAt n     st in (prn vs    >> return r)
+bc st         (FPRN n m) = {-# SCC "FPRN"  #-} let (vs,r) = splitAt (n+1) st in (fprn m vs >> return r)
+bc st         (PPRN n)   = {-# SCC "PPRN"  #-} let (vs,r) = splitAt (n+1) st in (pprn vs   >> return r)
 bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv)*:st
 bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v*:st
 bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
@@ -69,16 +66,18 @@ bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $ (
 bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
-bc st         DRP        = {-# SCC "DRP" #-} return $ []
+bc st         DRP        = {-# SCC "DRP"   #-} return $ []
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
-execBC :: [Value] -> [OpCode] -> Interpreter [Value] 
-execBC st         []             = return st
+execBC :: [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
+execBC st         []             = return (True, st)
+execBC st         (op@EX:_)      = {-# SCC "EX"  #-} dbg st op >> return (False, st)
+execBC st         (op@NXT:_)     = {-# SCC "NXT" #-} dbg st op >> return (True, st)
 execBC s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} dbg s  op >> if toBool top then execBC  st r else jmp n st
 execBC s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} dbg s  op >> jmp n st
 execBC st         (op:ops)       = {-# SCC "OP"  #-} dbg st op >> bc st op >>= \st' -> execBC st' ops
 
-jmp :: Int -> [Value] -> Interpreter [Value]
+jmp :: Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
 jmp n st = gets hcOPCODES >>= \src -> let r = drop n src in (execBC st r)
 
