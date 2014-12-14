@@ -16,11 +16,9 @@ instance Show (IORef a) where
 data Expression = Arith ArithOp Expression Expression
                 | Const Literal
                 | FieldRef Expression
-                | VariableRef String
-                | Variable (IORef Value) 
+                | VariableRef String | Variable (IORef Value) 
                 | ArrayRef String Expression
-                | Array (IORef Array) Expression
-                | Array' (IORef Array)
+                | Array (IORef Array) Expression | Array' (IORef Array)
                 | BuiltInVar BVar
                 | Assignment ArithOp Expression Expression
                 | Incr Notation Expression
@@ -30,14 +28,14 @@ data Expression = Arith ArithOp Expression Expression
                 | Neg Expression
                 | Id Expression
                 | Concat Expression Expression
-                | In Expression Expression
-                | In' Expression (IORef Array)
+                | In Expression Expression | In' Expression (IORef Array)
                 | Logic LogOp Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
                 | FunCall BFunc [Expression]
                 | InlineIf Expression Expression Expression
                 | Getline
+                | GetlineVar Expression
                   deriving (Eq, Show)
 
 data Statement = Expression Expression

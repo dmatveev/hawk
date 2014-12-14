@@ -75,13 +75,14 @@ execBC' :: [OpCode] -> Interpreter (Bool, [Value])
 execBC' src = seq src $ execBC src [] src
 
 execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
-execBC src st         []             = return (True, st)
-execBC src st         (op@EX:_)      = {-# SCC "EX"   #-} dbg st op >> return (False, st)
-execBC src st         (op@NXT:_)     = {-# SCC "NXT"  #-} dbg st op >> return (True, st)
-execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"   #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
-execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP"  #-} dbg s  op >> jmp src n st
-execBC src st         (op@(GETL):r)  = {-# SCC "GETL" #-} dbg st op >> getline >>= \top -> execBC src (top:st) r
-execBC src st         (op:ops)       = {-# SCC "OP"   #-} dbg st op >> bc st op >>= \st' -> execBC src st' ops
+execBC src st         []               = return (True, st)
+execBC src st         (op@EX:_)        = {-# SCC "EX"    #-} dbg st op >> return (False, st)
+execBC src st         (op@NXT:_)       = {-# SCC "NXT"   #-} dbg st op >> return (True, st)
+execBC src s@(top:st) (op@(JF  n):r)   = {-# SCC "JF"    #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
+execBC src s@st       (op@(JMP n):_)   = {-# SCC "JMP"   #-} dbg s  op >> jmp src n st
+execBC src st         (op@(GETL):r)    = {-# SCC "GETL"  #-} dbg st op >> getline    >>= \top -> execBC src (top:st) r
+execBC src st         (op@(GETLV v):r) = {-# SCC "GETLV" #-} dbg st op >> getlineV v >>= \top -> execBC src (top:st) r
+execBC src st         (op:ops)         = {-# SCC "OP"    #-} dbg st op >> bc st op   >>= \st' -> execBC src st' ops
 
 jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
@@ -230,8 +231,8 @@ setupContext (Record _ l nf flds) rs = {-# SCC "CTXMOD" #-} modify $ \s ->
    s { hcThisLine = l
      , hcFields   = flds
      , hcNF       = VDouble (fromIntegral $ nf)
-     , hcNR       = VDouble (succ $ toDouble $ hcNR s)
-     , hcFNR      = VDouble (succ $ toDouble $ hcNR s)
+     , hcNR       = VDouble (succ $ toDouble $ hcNR  s)
+     , hcFNR      = VDouble (succ $ toDouble $ hcFNR s)
      , hcWorkload = rs
      }
 
@@ -246,3 +247,20 @@ getline = do
                     Just (Workload _ (r:rs)) -> handleRecord r rs
         (r:rs) -> handleRecord r rs 
  where handleRecord r rs = setupContext r rs >> return (VDouble $! 1)
+
+getlineV :: (IORef Value) -> Interpreter Value
+getlineV ref = do
+      w <- gets hcWorkload
+      case w of
+        [] -> do i  <- gets hcInput
+                 mw <- liftIO $ fetch i
+                 case mw of
+                    Nothing                  -> return $ VDouble $! -1
+                    Just (Workload _ (r:rs)) -> handleRecord r rs
+        (r:rs) -> handleRecord r rs 
+ where handleRecord (Record _ l nf flds) rs = do
+         liftIO $ writeIORef ref (valstr l)
+         modify $ \s -> s { hcNR  = VDouble (succ $ toDouble $ hcNR  s)
+                          , hcFNR = VDouble (succ $ toDouble $ hcFNR s)
+                          }
+         return $ VDouble $! 1

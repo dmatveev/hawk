@@ -125,8 +125,11 @@ funcalls = choice $ map funcall hawkFunctions
 builtInVar (s,b) = rsvd s >> return (BuiltInVar b)
 builtInVars      = choice $ map builtInVar hawkBuiltinVars
 
-getline = try plainGetline
-   where plainGetline = rsvd "getline" >> return Getline
+getline = try varGetline
+          <|> plainGetline
+   where varGetline   = GetlineVar <$> (gl *> variableRef)
+         plainGetline = gl >> return Getline
+         gl = rsvd "getline"
 
 -- Decreasing presedence order!
 -- The reversed version of The AWK Book's table 2-8.

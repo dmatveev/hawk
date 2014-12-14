@@ -159,7 +159,8 @@ traceE (NoMatch lhs rhs)    = cmb' (traceE lhs) (traceE rhs)
 traceE (InlineIf c t f)     = cmb' (traceE c) (cmb' (traceE t) (traceE f))
 traceE (FunCall f vs)       = trf f vs >> updFunCalls
 traceE (Getline)            = return GLOBAL
- 
+traceE (GetlineVar (VariableRef s)) = updVarTag s GLOBAL
+
 trf GSub  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
 trf GSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
 trf GSub  [a1,a2,(FieldRef    e)] = traceE a1 >> traceE a2 >> traceE e >> updFields GLOBAL
@@ -264,6 +265,7 @@ putRefsE (NoMatch lhs rhs)        = NoMatch    <$> putRefsE lhs <*> putRefsE rhs
 putRefsE (FunCall s args)         = prf s args
 putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c <*> putRefsE t <*> putRefsE f
 putRefsE (Getline)                = return Getline
+putRefsE (GetlineVar v)           = GetlineVar <$> putRefsE v
 
 prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
                                             <*> sequence [putRefsE a1, (Array' <$> arr a)]
