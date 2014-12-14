@@ -53,3 +53,8 @@ nextLine (FromHandle h rb re) rs = readIter h
                      readIter h
                 | otherwise -> do liftIO $ writeIORef rb (B.drop nrs rest)
                                   return (Just l)
+
+
+closeStream :: MonadIO m => InputSource -> m ()
+closeStream (External _)       = return ()
+closeStream (FromHandle h _ _) = liftIO $ hClose h

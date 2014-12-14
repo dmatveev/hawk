@@ -162,6 +162,7 @@ traceE (Getline)            = return GLOBAL
 traceE (GetlineVar (VariableRef s)) = updVarTag s GLOBAL
 traceE (FGetline f)         = traceE f >> return GLOBAL
 traceE (FGetlineVar v f)    = traceE v >> traceE f >> return GLOBAL
+traceE (PGetline cmd)       = traceE cmd >> return GLOBAL
 
 trf GSub  [a1,a2,(VariableRef a)] = traceE a1 >> traceE a2 >> updVarTag a GLOBAL
 trf GSub  [a1,a2,(ArrayRef a  i)] = traceE a1 >> traceE a2 >> updArr a >> traceE i
@@ -270,6 +271,7 @@ putRefsE (Getline)                = return Getline
 putRefsE (GetlineVar v)           = GetlineVar <$> putRefsE v
 putRefsE (FGetline f)             = FGetline   <$> putRefsE f
 putRefsE (FGetlineVar v f)        = FGetlineVar<$> putRefsE v <*> putRefsE f
+putRefsE (PGetline cmd)           = PGetline   <$> putRefsE cmd
 
 prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
                                             <*> sequence [putRefsE a1, (Array' <$> arr a)]

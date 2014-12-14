@@ -109,6 +109,7 @@ compileE (Getline)           = op $ GETL
 compileE (GetlineVar (Variable v)) = op $ GETLV v
 compileE (FGetline f)        = compileE f >> op FGETL
 compileE (FGetlineVar (Variable v) f) = compileE f >> op (FGETLV v)
+compileE (PGetline cmd)      = compileE cmd >> op PGETL
 
 compileFSub f [a1,a2] = do
    compileE a1

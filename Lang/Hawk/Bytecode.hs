@@ -49,6 +49,7 @@ data OpCode = ARITH ArithOp
             | GETLV (IORef Value)
             | FGETL
             | FGETLV (IORef Value)
+            | PGETL
             deriving (Show)
 
 type Bytecode = Seq OpCode

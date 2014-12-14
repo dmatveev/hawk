@@ -74,7 +74,7 @@ lexer = P.makeTokenParser
                               ,"=","*=","/=","+=","-=","%=","^="
                               ,"++","--"
                               ,"~","!~"
-                              ,"&&","||","!",",",";"]
+                              ,"&&","||","!",",",";","|"]
         })
 parens     = P.parens        lexer
 natural    = P.natural       lexer
@@ -144,7 +144,6 @@ table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
            , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
            , [arith "+" Add, arith "-" Sub ]
            , [binary ":" Concat AssocRight] -- explicit concatenation operator
-           , [prefix "getline <" FGetline]
            , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
            , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
            , [binary "in" In AssocRight]
@@ -152,6 +151,7 @@ table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
            , [logic "||" OR]
            , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
              , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
+           , [fgetl, pgetl]
            ]
 
 defaultTable = table [rel ">" CmpGT]
@@ -165,6 +165,9 @@ logic s o = binary s (Logic      o) AssocRight
 binary  name fun assoc = Infix   (do {rsvdOp name; return fun}) assoc
 prefix  name fun       = Prefix  (do {rsvdOp name; return fun})
 postfix name fun       = Postfix (do {rsvdOp name; return fun})
+
+fgetl   = Prefix  (try $ do {rsvd "getline"; whitespace; rsvd "<"; return FGetline}) 
+pgetl   = Postfix (try $ do {rsvd "|"; whitespace; rsvd "getline"; return PGetline})
 
 -- Statements
 stExpr = Expression <$> expr

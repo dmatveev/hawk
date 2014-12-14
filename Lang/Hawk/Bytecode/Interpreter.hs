@@ -72,6 +72,7 @@ bc st         GETL       = {-# SCC "GETL"  #-} getline         >>= \v -> return 
 bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return $ v*:st
 bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return $ v*:st
 bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
+bc (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline top    >>= \v -> return $ v*:st
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
@@ -301,3 +302,33 @@ fGetInput f = do
                     modify $ \s -> s { hcFInputs = M.insert f is (hcFInputs s)}
                     return is
 
+
+pgetline :: Value -> Interpreter Value
+pgetline vcmd = do
+   (_,is) <- intPopen (toString vcmd)
+   rs <- gets hcRS
+   ml <- liftIO $ nextLine is (toString rs)
+   case ml of
+      Nothing  -> return $ VDouble $ -1
+      (Just l) -> do flds <- splitIntoFields l
+                     let fldm = IM.fromList (zip [1,2..] (map valstr flds))
+                     modify $ \s -> s { hcThisLine = l
+                                      , hcFields   = fldm
+                                      , hcNF       = VDouble $ fromIntegral $ length flds
+                                      }
+                     return $ VDouble 1
+
+   
+
+intPopen :: B.ByteString -> Interpreter (ProcessHandle, InputSource)
+intPopen cmd = do
+   mp <- liftM (M.lookup cmd) $ gets hcIPHandles
+   case mp of
+      (Just p) -> return p
+      Nothing  -> do
+         (_, Just hout, _, ph) <- liftIO $ createProcess $ (shell cmd') {std_out = CreatePipe}
+         is <- liftIO $ fromHandle hout
+         let p = (ph,is)
+         modify $ \s -> s { hcIPHandles = M.insert cmd p (hcIPHandles s) }
+         return p
+  where cmd' = B.unpack cmd

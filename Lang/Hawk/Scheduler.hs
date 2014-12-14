@@ -122,11 +122,15 @@ worker src mq = runInterpreter wrkMain (emptyContext src $ External mq) >> retur
            if cont then wrkProc else return False 
 
    wrkFinish = do
-      gets hcSHUTDOWN >>= execBC'
-      gets hcHandles  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
-      gets hcPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+      gets hcSHUTDOWN  >>= execBC'
+      gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+      gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
           hClose h
           waitForProcess p
+      gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
+          closeStream is
+          waitForProcess p
+
 
 run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
