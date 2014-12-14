@@ -151,7 +151,7 @@ table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
            , [logic "||" OR]
            , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
              , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
-           , [fgetl, pgetl]
+           , [pgetlv, pgetl, fgetl]
            ]
 
 defaultTable = table [rel ">" CmpGT]
@@ -166,8 +166,10 @@ binary  name fun assoc = Infix   (do {rsvdOp name; return fun}) assoc
 prefix  name fun       = Prefix  (do {rsvdOp name; return fun})
 postfix name fun       = Postfix (do {rsvdOp name; return fun})
 
-fgetl   = Prefix  (try $ do {rsvd "getline"; whitespace; rsvd "<"; return FGetline}) 
-pgetl   = Postfix (try $ do {rsvd "|"; whitespace; rsvd "getline"; return PGetline})
+fgetl   = Prefix  (try $ do {rsvd "getline"; rsvd "<"; return FGetline}) 
+pgetl   = Postfix (try $ do {rsvd "|"; rsvd "getline"; return PGetline})
+pgetlv  = Postfix (try $ do {rsvd "|"; rsvd "getline"; v <- variableRef;
+                             return $ \e -> PGetlineVar e v})
 
 -- Statements
 stExpr = Expression <$> expr

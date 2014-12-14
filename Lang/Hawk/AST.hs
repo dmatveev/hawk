@@ -39,6 +39,7 @@ data Expression = Arith ArithOp Expression Expression
                 | FGetline Expression
                 | FGetlineVar Expression Expression
                 | PGetline Expression
+                | PGetlineVar Expression Expression
                   deriving (Eq, Show)
 
 data Statement = Expression Expression

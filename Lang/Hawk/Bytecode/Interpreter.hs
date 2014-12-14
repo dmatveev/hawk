@@ -73,6 +73,7 @@ bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return 
 bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return $ v*:st
 bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
 bc (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline top    >>= \v -> return $ v*:st
+bc (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV r top >>= \v -> return $ v*:st 
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
@@ -318,7 +319,15 @@ pgetline vcmd = do
                                       }
                      return $ VDouble 1
 
-   
+pgetlineV :: IORef Value -> Value -> Interpreter Value
+pgetlineV r vcmd = do
+   (_,is) <- intPopen (toString vcmd)
+   rs <- gets hcRS
+   ml <- liftIO $ nextLine is (toString rs)
+   case ml of
+      Nothing  -> return $ VDouble $ -1
+      (Just l) -> do liftIO $ writeIORef r (valstr l)
+                     return $ VDouble 1 
 
 intPopen :: B.ByteString -> Interpreter (ProcessHandle, InputSource)
 intPopen cmd = do
