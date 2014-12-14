@@ -108,6 +108,7 @@ compileE (FunCall s      vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
 compileE (Getline)           = op $ GETL
 compileE (GetlineVar (Variable v)) = op $ GETLV v
 compileE (FGetline f)        = compileE f >> op FGETL
+compileE (FGetlineVar (Variable v) f) = compileE f >> op (FGETLV v)
 
 compileFSub f [a1,a2] = do
    compileE a1

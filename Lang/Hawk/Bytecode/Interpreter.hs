@@ -68,9 +68,10 @@ bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = 
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
 bc st         DRP        = {-# SCC "DRP"   #-} return $ []
-bc st         GETL       = {-# SCC "GETL"  #-} getline      >>= \v -> return $ v*:st
-bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r   >>= \v -> return $ v*:st
-bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top >>= \v -> return $ v*:st
+bc st         GETL       = {-# SCC "GETL"  #-} getline         >>= \v -> return $ v*:st
+bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return $ v*:st
+bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return $ v*:st
+bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
 bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
@@ -279,6 +280,16 @@ fgetline vf = do
                                       , hcFields   = fldm
                                       , hcNF       = VDouble $ fromIntegral $ length flds
                                       }
+                     return $ VDouble 1
+
+fgetlineV :: IORef Value -> Value -> Interpreter Value
+fgetlineV r vf = do
+   is <- fGetInput (toString vf)
+   rs <- gets hcRS
+   ml <- liftIO $ nextLine is (toString rs)
+   case ml of
+      Nothing  -> return $ VDouble $ -1
+      (Just l) -> do liftIO $ writeIORef r (valstr l)
                      return $ VDouble 1
 
 fGetInput :: B.ByteString -> Interpreter InputSource
