@@ -27,9 +27,9 @@ data HawkContext = HawkContext
                  , hcThisLine :: B.ByteString
                  , hcStdGen   :: StdGen
 
-                 , hcSTARTUP  :: ![OpCode]
-                 , hcSHUTDOWN :: ![OpCode]
-                 , hcOPCODES  :: ![OpCode]
+                 , hcSTARTUP  :: [OpCode]
+                 , hcSHUTDOWN :: [OpCode]
+                 , hcOPCODES  :: [OpCode]
 
                  , hcKEYS     :: ![String]
                  , hcKSTACK   :: ![[String]]
