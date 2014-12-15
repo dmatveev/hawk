@@ -209,12 +209,17 @@ compileIF t th el = do
    compileE t
    check <- nop
    compileS th
-   afterThen <- nop
-   enterElse <- pos
-   maybe (return ()) compileS el
-   end <- pos
-   putOP (JF  enterElse) check
-   putOP (JMP end) afterThen
+   case el of
+      Nothing  -> do
+          end <- pos
+          putOP (JF end) check
+      (Just s) -> do
+          afterThen <- nop
+          enterElse <- pos
+          compileS s
+          end <- pos
+          putOP (JF  enterElse) check
+          putOP (JMP end) afterThen
 
 compileIIF c t e = do
    compileE c
