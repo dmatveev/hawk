@@ -45,6 +45,7 @@ data OpCode = ARITH ArithOp
             | SPLIT (IORef Array)
             | NXT
             | EX
+            | CAT
             | GETL
             | GETLV (IORef Value)
             | FGETL

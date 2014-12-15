@@ -52,6 +52,7 @@ hawkFunctions =
 hawkConstructs =
     [ "print"    -- prints comma-separated list of arguments, concatenated with OFS
     , "if"       -- if-then[-else] statement
+    , "else"
     , "do"       -- do-while statement (body is executed at least once)
     , "while"    -- while statement (body can be skipped on an initially failed test)
     , "for"      -- for([init];[cond];[step])
@@ -63,6 +64,7 @@ hawkConstructs =
     , "in"       -- array membership
     , "delete"   -- delete item from an array
     , "return"   -- return control (and value, if any) from function
+    , "print"
     ]
 
 -- Lexer
@@ -143,12 +145,13 @@ table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
            , [prefix "-" Neg, prefix "+" Id]
            , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
            , [arith "+" Add, arith "-" Sub ]
-           , [binary ":" Concat AssocRight] -- explicit concatenation operator
+           , [conc]
            , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
            , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
            , [binary "in" In AssocRight]
            , [logic "&&" AND]
            , [logic "||" OR]
+           , [iif]
            , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
              , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
            , [pgetlv, pgetl, fgetl]
@@ -170,6 +173,11 @@ fgetl   = Prefix  (try $ do {rsvd "getline"; rsvd "<"; return FGetline})
 pgetl   = Postfix (try $ do {rsvd "|"; rsvd "getline"; return PGetline})
 pgetlv  = Postfix (try $ do {rsvd "|"; rsvd "getline"; v <- variableRef;
                              return $ \e -> PGetlineVar e v})
+
+conc = Infix (return Concat) AssocRight
+
+iif = Infix (try $ do {symbol "?"; t <- expr; symbol ":"; return $ \c e -> InlineIf c t e})
+      AssocRight
 
 -- Statements
 stExpr = Expression <$> expr

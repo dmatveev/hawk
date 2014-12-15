@@ -59,3 +59,6 @@ toString (VDouble d) =
 vBool b = VDouble $! if b then 1 else 0
 vNot  v = VDouble $! if (toBool v) then 0 else 1
 vNeg  v = VDouble $! - toDouble v
+
+vConcat :: Value -> Value -> Value
+vConcat l r = valstr $ B.append (toString l) (toString r)

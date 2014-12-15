@@ -105,12 +105,14 @@ compileE (FunCall f@GSub vs) = compileFSub f vs
 compileE (FunCall f@FSub  vs) = compileFSub f vs
 compileE (FunCall Split  vs) = compileSPLIT vs
 compileE (FunCall s      vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
+compileE (Concat l r)        = compileE l >> compileE r >> op CAT
 compileE (Getline)           = op $ GETL
 compileE (GetlineVar (Variable v)) = op $ GETLV v
 compileE (FGetline f)        = compileE f >> op FGETL
 compileE (FGetlineVar (Variable v) f) = compileE f >> op (FGETLV v)
 compileE (PGetline cmd)      = compileE cmd >> op PGETL
 compileE (PGetlineVar cmd (Variable v)) = compileE cmd >> op (PGETLV v)
+compileE (InlineIf c t e)    = compileIIF c t e
 
 compileFSub f [a1,a2] = do
    compileE a1
@@ -205,8 +207,25 @@ compileS (DELARR r)        = op (ADRP r)
 
 compileIF t th el = do
    compileE t
-   jf $ compileS th
+   check <- nop
+   compileS th
+   afterThen <- nop
+   enterElse <- pos
    maybe (return ()) compileS el
+   end <- pos
+   putOP (JF  enterElse) check
+   putOP (JMP end) afterThen
+
+compileIIF c t e = do
+   compileE c
+   check <- nop
+   compileE t
+   afterThen <- nop
+   enterElse <- pos
+   compileE e
+   end <- pos 
+   putOP (JF  enterElse) check
+   putOP (JMP end) afterThen
 
 compileFOR mi mc ms st = do
    maybe (return ()) compileE mi

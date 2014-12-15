@@ -68,6 +68,7 @@ bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = 
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
 bc st         DRP        = {-# SCC "DRP"   #-} return $ []
+bc (rv:lv:st) CAT        = {-# SCC "CAT"   #-} return $ (vConcat lv rv)*:st
 bc st         GETL       = {-# SCC "GETL"  #-} getline         >>= \v -> return $ v*:st
 bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return $ v*:st
 bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return $ v*:st
