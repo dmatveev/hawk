@@ -86,6 +86,7 @@ execBC src st         []             = return (True, st)
 execBC src st         (op@EX:_)      = {-# SCC "EX"    #-} dbg st op >> return (False, st)
 execBC src st         (op@NXT:_)     = {-# SCC "NXT"   #-} dbg st op >> return (True, st)
 execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"    #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
+execBC src s@(top:st) (op@(JT  n):r) = {-# SCC "JT"    #-} dbg s  op >> if toBool top then jmp src n st else execBC src st r
 execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP"   #-} dbg s  op >> jmp src n st
 execBC src st         (op:ops)       = {-# SCC "OP"    #-} dbg st op >> bc st op   >>= \st' -> execBC src st' ops
 

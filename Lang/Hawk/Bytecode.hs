@@ -41,6 +41,7 @@ data OpCode = ARITH ArithOp
             | PPRN  Int
             | JMP   Int
             | JF    Int
+            | JT    Int
             | DRP
             | SPLIT (IORef Array)
             | NXT

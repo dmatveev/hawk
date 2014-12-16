@@ -98,7 +98,8 @@ compileE (Not e)            = compileE e >> op NOT
 compileE (Neg e)            = compileE e >> op NEG
 compileE (Id e)             = compileE e
 compileE (In' e r)          = compileE e >> op (IN r) 
-compileE (Logic o l r)      = compileE l >> compileE r >> op (LGC o) -- TODO: eval.order!
+compileE (Logic AND l r)    = compileAND l r
+compileE (Logic OR  l r)    = compileOR  l r
 compileE (Match l r)        = compileE l >> compileE r >> op MATCH
 compileE (NoMatch l r)      = compileE l >> compileE r >> op MATCH >> op NOT
 compileE (FunCall f@GSub vs) = compileFSub f vs
@@ -185,6 +186,28 @@ compileMOD' Post m p ce = do
 
 compileINCR n p = compileMOD' n Add p $ op $ PUSH (VDouble 1)
 compileDECR n p = compileMOD' n Sub p $ op $ PUSH (VDouble 1)
+
+compileAND l r = do
+  compileE l
+  afterL <- nop
+  compileE r
+  afterR <- nop
+  exit <- pos
+  op $ PUSH (VDouble 0)
+  end <- pos
+  putOP (JF exit) afterL
+  putOP (JMP end) afterR
+
+compileOR l r = do
+  compileE l
+  afterL <- nop
+  compileE r
+  afterR <- nop
+  exit <- pos
+  op $ PUSH (VDouble 1)
+  end <- pos
+  putOP (JT exit) afterL
+  putOP (JMP end) afterR
 
 compileS :: Statement -> Compiler ()
 compileS (Expression e)    = compileE e
