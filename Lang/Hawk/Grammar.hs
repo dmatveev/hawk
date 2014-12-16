@@ -76,6 +76,7 @@ lexer = P.makeTokenParser
                               ,"=","*=","/=","+=","-=","%=","^="
                               ,"++","--"
                               ,"~","!~"
+                              ,"==",">","<",">=","<=","!="
                               ,"&&","||","!",",",";","|"]
         })
 parens     = P.parens        lexer
@@ -92,14 +93,14 @@ whitespace = P.whiteSpace    lexer
 pattern = try range <|> regexp <|> exprp <|> begin <|> end <?> "pattern"
 begin   = rsvd "BEGIN" >> return BEGIN
 end     = rsvd "END"   >> return END
-exprp   = EXPR  <$> expr  <?> "expression pattern"
+exprp   = EXPR  <$> patExpr  <?> "expression pattern"
 regexp  = RE    <$> regex <?> "regexp"
 range   = RANGE <$> sp <* rsvdOp "," <*> sp <?> "range pattern" where sp = exprp <|> regexp
 
 -- Expression grammar
 expr    = buildExpressionParser defaultTable term <?> "expression"
 prnExpr = buildExpressionParser printTable   term <?> "expression (print)"
-
+patExpr = buildExpressionParser patternTable term <?> "expression (pattern)" 
 
 term = parens expr
      <|> try funcalls
@@ -138,27 +139,29 @@ getline   = try varFileGetline
 
 -- Decreasing presedence order!
 -- The reversed version of The AWK Book's table 2-8.
-table gt = [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
-             , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
-           , [arith "^" Pow]
-           , [prefix "!" Not]
-           , [prefix "-" Neg, prefix "+" Id]
-           , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
-           , [arith "+" Add, arith "-" Sub ]
-           , [conc]
-           , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
-           , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
-           , [binary "in" In AssocRight]
-           , [logic "&&" AND]
-           , [logic "||" OR]
-           , [iif]
-           , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
-             , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
-           , [pgetlv, pgetl, fgetl]
-           ]
+table gt cc =
+   [ [ prefix "++" (Incr Pre), postfix "++" (Incr Post)
+     , prefix "--" (Decr Pre), postfix "--" (Decr Post) ]
+   , [arith "^" Pow]
+   , [prefix "!" Not]
+   , [prefix "-" Neg, prefix "+" Id]
+   , [arith "*" Mul, arith "/" Div, arith "%" Mod ]
+   , [arith "+" Add, arith "-" Sub ]
+   , cc
+   , [rel "<" CmpLT, rel "<=" CmpLE, rel "==" CmpEQ, rel "!=" CmpNE, rel ">=" CmpGE] ++ gt
+   , [binary "~" Match AssocRight, binary "!~" NoMatch AssocRight]
+   , [binary "in" In AssocRight]
+   , [logic "&&" AND]
+   , [logic "||" OR]
+   , [iif]
+   , [ asgn "=" Set, asgn "+=" Add, asgn "-=" Sub
+     , asgn "*=" Mul, asgn  "/=" Div, asgn "%=" Mod, asgn "^=" Pow]
+   , [pgetlv, pgetl, fgetl]
+   ]
 
-defaultTable = table [rel ">" CmpGT]
-printTable   = table []
+defaultTable = table [rel ">" CmpGT] [conc]
+printTable   = table []              [conc]
+patternTable = table [rel ">" CmpGT] []
 
 rel   s o = binary s (Relation   o) AssocLeft
 arith s o = binary s (Arith      o) AssocLeft
