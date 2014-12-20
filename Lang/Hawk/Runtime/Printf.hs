@@ -89,6 +89,9 @@ pad align l z str =
         pad' R dl str = B.append (padstr dl) str
         padstr n = B.pack $ take n $ if z then repeat '0' else repeat ' '
 
+prepend r str = if r == 0 then str else p' (r - B.length str)
+  where p' dl = B.append (B.pack $ take dl $ repeat '0') str
+
 formatChar v = case v of
    (VDouble d)     -> fmt d
    (VString s d b) -> if b then fmt d else B.take 1 s  
@@ -97,7 +100,8 @@ formatChar v = case v of
                       | otherwise            = B.singleton (chr i)
                 in r
 
-formatDec = undefined
+formatDec v r = prepend r $ B.pack $ show $ toInt v 
+
 formatSci = undefined
 formatFlt = undefined
 formatG   = undefined
@@ -106,4 +110,9 @@ formatOct = undefined
 formatStr v 0 = toString v
 formatStr v i = B.take i $ toString v 
 
-formatHex = undefined
+formatHex v r = prepend r $ B.pack $ hexstr $ toInt v
+    where hexstr i | i < 16    = [hexchr i]
+                   | otherwise = (hexstr $ i `div` 16) ++ [hexchr (i `mod` 16)]
+          hexchr i = ['0','1','2','3','4','5','6','7'
+                     ,'8','9','a','b','c','d','e','f'
+                     ] !! i 
