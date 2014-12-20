@@ -48,7 +48,6 @@ bc (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $ v*:
 bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ st) -- TODO: previously, value was pushed on stack
 bc (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $ v*:st
 bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o)*:st
-bc (rv:lv:st) (LGC o)    = {-# SCC "LGC"   #-} return $ (calcLogic o lv rv)*:st
 bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top)*:st
 bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top)*:st
 bc st         (CALL f n) = {-# SCC "CALL"  #-} funcall st f n

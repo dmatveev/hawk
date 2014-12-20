@@ -75,7 +75,12 @@ jf c = do
    pos >>= \p -> putOP (JF p) i
 
 drp :: Compiler () -> Compiler ()
-drp c = c >> op DRP
+drp c = c >> do 
+   s <- gets csBC
+   case D.viewr s of
+      D.EmptyR     -> return ()
+      (_ D.:> DRP) -> return ()
+      (_ D.:> _)   -> op DRP
 
 toValue :: Literal -> Value
 toValue (LitNumeric i) = VDouble i
