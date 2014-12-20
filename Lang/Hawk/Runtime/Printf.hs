@@ -90,9 +90,6 @@ pad align l z str =
         pad' R dl str = B.append (padstr dl) str
         padstr n = B.pack $ take n $ if z then repeat '0' else repeat ' '
 
-prepend r str = if r == 0 then str else p' (r - B.length str)
-  where p' dl = B.append (B.pack $ take dl $ repeat '0') str
-
 formatChar v = case v of
    (VDouble d)     -> fmt d
    (VString s d b) -> if b then fmt d else B.take 1 s  
@@ -101,32 +98,57 @@ formatChar v = case v of
                       | otherwise            = B.singleton (chr i)
                 in r
 
-formatDec v r = prepend r $ B.pack $ show $ toInt v 
+formatDec v r = B.pack $ lzrs r $ show $ toInt v 
 
-formatSci = undefined
+formatSci v r =
+   let (b,m,e) | p >=  0 = ( intToDigit (head rs)
+                           , map intToDigit (tail rs)
+                           , if p == 0 then "0" else show (p-1)
+                           )
+               | p <   0 = ( intToDigit (head rs)
+                           , map intToDigit (tail rs)
+                           , show (abs p + 1)
+                           )
+   in B.pack $ sgn ++ b:(tzrs r ('.':m)) ++ esgn ++ lzrs 2 e
+  where d      = toDouble v
+        (rs,p) = floatToDigits 10 (abs d)
+        sgn    = if d >= 0 then ""  else "-"
+        esgn   = if p >  0 then "e+" else "e-"
 
 formatFlt v r =
    let (n,f) | rs == [0] && p == 0 = ("0","")
-             | p >= 0 && nrs <= p  = ((map intToDigit rs) ++ take (p-nrs) (repeat '0'),"")
-             | otherwise           = (map intToDigit (take p rs) , map intToDigit (drop p rs))
-   in B.pack $ sgn ++ n ++ tzrs ('.':f)
+             | p >= 0 && nrs <= p  = (map intToDigit rs ++ take (p-nrs) (repeat '0'), "")
+             | p < 0               = ("0", take (abs p) (repeat '0') ++ map intToDigit rs)
+             | otherwise           = (map intToDigit (take p rs), map intToDigit (drop p rs))
+   in B.pack $ sgn ++ n ++ tzrs r ('.':f)
   where (rs,p) = floatToDigits 10 (abs d)
         nrs    = length rs
         sgn    = if d >= 0 then "" else "-"
         d      = toDouble v
-        tzrs s = let l = r - length s
-                     t | r == 0 = ""
-                       | l >= 0 = s ++ take (l + 1) (repeat '0')
-                       | l <  0 = take (abs l) s 
-                 in t
 
-formatG   = undefined
-formatOct v r = prepend r $ B.pack $ formatBase (toInt v) 8 hexchr
+tzrs r s = let n = r - length s
+               t | r <  0 = s
+                 | r == 0 = ""
+                 | n >= 0 = s ++ take (n + 1) (repeat '0')
+                 | n <  0 = take (abs n) s 
+           in t
+
+lzrs l s = let n = l - length s
+               t | l == 0 = s
+                 | n <  0 = s
+                 | n >= 0 = take n (repeat '0') ++ s
+           in t
+
+formatG v r = let f = formatFlt v (-1)
+                  e = formatSci v (-1)
+              in if B.length f < B.length e then f else e
+
+formatOct v r = B.pack $ lzrs r $ formatBase (toInt v) 8 hexchr
 
 formatStr v 0 = toString v
 formatStr v i = B.take i $ toString v 
 
-formatHex v r = prepend r $ B.pack $ formatBase (toInt v) 16 hexchr
+formatHex v r = B.pack $ lzrs r $ formatBase (toInt v) 16 hexchr
 
 -- Yes, it is not very efficient, I know
 formatBase i base fchr
