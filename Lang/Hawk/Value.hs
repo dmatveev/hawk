@@ -2,6 +2,7 @@
 
 module Lang.Hawk.Value where
 
+import Data.Char (intToDigit)
 import qualified Data.Map.Strict as M
 import Control.Applicative ((<*))
 import qualified Data.Attoparsec.ByteString.Char8 as AP
@@ -49,7 +50,7 @@ toString :: Value -> B.ByteString
 toString (VString s _ _) = s
 toString (VDouble d) =
     let s | rs == [0] && p == 0 = "0"
-          | p >= 0 && nrs <= p  = sgn ++ (concat $ map show rs) ++ take (p-nrs) (repeat '0')
+          | p >= 0 && nrs <= p  = sgn ++ map intToDigit rs ++ take (p-nrs) (repeat '0')
           | otherwise           = show d
     in B.pack s
   where (rs,p) = floatToDigits 10 (abs d)

@@ -3,7 +3,8 @@ module Lang.Hawk.Runtime.Printf where
 import Control.Applicative ((<$>))
 import Control.Monad.Writer
 import Data.Maybe (maybe)
-import Data.Char (chr)
+import Data.Char (chr, intToDigit)
+import GHC.Float (floatToDigits)
 import qualified Data.ByteString.Char8 as B
 import Text.Parsec
 
@@ -38,7 +39,7 @@ parseSpec = do
    align  <- (char '-' >> return L   ) <|> return R
    zeroes <- (char '0' >> return True) <|> return False
    lpad   <- optionMaybe $ many1 digit
-   rpad   <- optionMaybe $ char '.' >> many1 digit
+   rpad   <- optionMaybe $ char '.' >> (many1 digit <|> return "0")
    fchr   <- (char 'c' >> return C)
          <|> (char 'd' >> return D)
          <|> (char 'e' >> return E)
@@ -103,16 +104,48 @@ formatChar v = case v of
 formatDec v r = prepend r $ B.pack $ show $ toInt v 
 
 formatSci = undefined
-formatFlt = undefined
+
+formatFlt v r =
+   let (n,f) | rs == [0] && p == 0 = ("0","")
+             | p >= 0 && nrs <= p  = ((map intToDigit rs) ++ take (p-nrs) (repeat '0'),"")
+             | otherwise           = (map intToDigit (take p rs) , map intToDigit (drop p rs))
+   in B.pack $ sgn ++ n ++ tzrs ('.':f)
+  where (rs,p) = floatToDigits 10 (abs d)
+        nrs    = length rs
+        sgn    = if d >= 0 then "" else "-"
+        d      = toDouble v
+        tzrs s = let l = r - length s
+                     t | r == 0 = ""
+                       | l >= 0 = s ++ take (l + 1) (repeat '0')
+                       | l <  0 = take (abs l) s 
+                 in t
+
 formatG   = undefined
-formatOct = undefined
+formatOct v r = prepend r $ B.pack $ formatBase (toInt v) 8 hexchr
 
 formatStr v 0 = toString v
 formatStr v i = B.take i $ toString v 
 
-formatHex v r = prepend r $ B.pack $ hexstr $ toInt v
-    where hexstr i | i < 16    = [hexchr i]
-                   | otherwise = (hexstr $ i `div` 16) ++ [hexchr (i `mod` 16)]
-          hexchr i = ['0','1','2','3','4','5','6','7'
-                     ,'8','9','a','b','c','d','e','f'
-                     ] !! i 
+formatHex v r = prepend r $ B.pack $ formatBase (toInt v) 16 hexchr
+
+-- Yes, it is not very efficient, I know
+formatBase i base fchr
+   | i < base  = [fchr i]
+   | otherwise = (formatBase (i `div` base) base fchr) ++ [fchr (i `mod` base)]
+
+hexchr  0 = '0'
+hexchr  1 = '1'
+hexchr  2 = '2'
+hexchr  3 = '3'
+hexchr  4 = '4'
+hexchr  5 = '5'
+hexchr  6 = '6'
+hexchr  7 = '7'
+hexchr  8 = '8'
+hexchr  9 = '9'
+hexchr 10 = 'a'
+hexchr 11 = 'b'
+hexchr 12 = 'c'
+hexchr 13 = 'd'
+hexchr 14 = 'e'
+hexchr 15 = 'f'
