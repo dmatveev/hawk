@@ -109,18 +109,20 @@ formatSci v r =
                            , map intToDigit (tail rs)
                            , show (abs p + 1)
                            )
-   in B.pack $ sgn ++ b:(tzrs r ('.':m)) ++ esgn ++ lzrs 2 e
+       m' = tzrs r m
+   in B.pack $ sgn ++ b:(if (not $ null m') then '.':m' else "") ++ esgn ++ lzrs 2 e
   where d      = toDouble v
         (rs,p) = floatToDigits 10 (abs d)
         sgn    = if d >= 0 then ""  else "-"
-        esgn   = if p >  0 then "e+" else "e-"
+        esgn   = if p >= 0 then "e+" else "e-"
 
 formatFlt v r =
    let (n,f) | rs == [0] && p == 0 = ("0","")
              | p >= 0 && nrs <= p  = (map intToDigit rs ++ take (p-nrs) (repeat '0'), "")
-             | p < 0               = ("0", take (abs p) (repeat '0') ++ map intToDigit rs)
+             | p <= 0              = ("0", take (abs p) (repeat '0') ++ map intToDigit rs)
              | otherwise           = (map intToDigit (take p rs), map intToDigit (drop p rs))
-   in B.pack $ sgn ++ n ++ tzrs r ('.':f)
+       f'  = tzrs r f
+   in B.pack $ sgn ++ n ++ if (not $ null f') then '.':f' else ""
   where (rs,p) = floatToDigits 10 (abs d)
         nrs    = length rs
         sgn    = if d >= 0 then "" else "-"
@@ -129,8 +131,8 @@ formatFlt v r =
 tzrs r s = let n = r - length s
                t | r <  0 = s
                  | r == 0 = ""
-                 | n >= 0 = s ++ take (n + 1) (repeat '0')
-                 | n <  0 = take (abs n) s 
+                 | n >= 0 = s ++ take n (repeat '0')
+                 | n <  0 = take r s 
            in t
 
 lzrs l s = let n = l - length s
