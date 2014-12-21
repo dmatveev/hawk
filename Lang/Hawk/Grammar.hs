@@ -205,10 +205,10 @@ stPPrint = PPRINT <$> stPrnCommon <* symbol "|" <*> expr
 stBlock = Block <$> (symbol "{" *> spc *> many statement <* symbol "}" <* spc)
           <?> "block of statements"
 
-stIf = IF <$> (rsvd "if" >> parens expr) <*> statement <*> tryElse
-  where tryElse = optionMaybe (rsvd "else" >> statement)
+stIf = IF <$> (rsvd "if" *> parens expr <* spc) <*> statement <*> tryElse
+  where tryElse = optionMaybe (rsvd "else" >> spc >> statement)
 
-stWhile = WHILE <$> (rsvd "while" >> parens expr) <*> (stBlock <|> stExpr)
+stWhile = WHILE <$> (rsvd "while" *> parens expr <* spc) <*> (stBlock <|> stExpr)
 
 stDoWhile = DO <$> (rsvd "do" >> (stBlock <|> stExpr)) <*> (rsvd "while" *> parens expr)
 
@@ -221,6 +221,7 @@ stFor = do
        symbol ";"
        s <- optionMaybe expr
        return (i,c,s)
+    spc
     s <- statement
     return $ FOR mInit mCond mStep s
 
@@ -231,6 +232,7 @@ stForEach = do
        rsvd "in"
        a <- identifier
        return (v,a)
+    spc
     s <- statement
     return $ FOREACH var arr s
 
