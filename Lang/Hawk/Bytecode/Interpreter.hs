@@ -2,7 +2,6 @@ module Lang.Hawk.Bytecode.Interpreter where
 
 import Data.IORef
 import Data.Fixed (mod')
-import Control.Exception
 import Control.Monad.State.Strict
 import qualified Data.Map as M
 import qualified Data.IntMap as IM
@@ -17,6 +16,7 @@ import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
+import Lang.Hawk.Runtime.Printf
 
 dbg :: [Value] -> OpCode -> Interpreter ()
 {-# INLINE dbg #-}
@@ -96,23 +96,28 @@ jmp src n st = let r = drop n src in (execBC src st r)
 
 funcall :: [Value] -> BFunc -> Int -> Interpreter [Value]
 {-# INLINE funcall #-}
-funcall (vx:vy:st)    Atan2  2 = return $ (calcAtan2 vy vx)*:st
-funcall (top:st)      Cos    1 = return $ (proxyFcn cos top)*:st
-funcall (top:st)      Exp    1 = return $ (proxyFcn exp top)*:st
-funcall (top:st)      Int    1 = return $ (proxyFcn (fromIntegral.truncate) top)*:st
-funcall (top:st)      Log    1 = return $ (proxyFcn log top)*:st
-funcall (top:st)      Sin    1 = return $ (proxyFcn sin top)*:st
-funcall (top:st)      Sqrt   1 = return $ (proxyFcn sqrt top)*:st
-funcall st            Srand  0 = intSRand >> (return $ (VDouble 0)*:st)
-funcall (top:st)      Srand  1 = intSRand' top >> (return $ (VDouble 0)*:st)
-funcall st            Rand   0 = evalRand >>= \v -> return $ v*:st
-funcall (vt:vs:st)    Index  2 = return $ (calcIndex vs vt)*:st
-funcall (top:st)      Length 1 = return $ (calcLength top)*:st
-funcall (vp:vs:st)    Substr 2 = return $ (calcSubstr vs vp)*:st
-funcall (vn:vp:vs:st) Substr 3 = return $ (calcSubstr2 vs vp vn)*:st
-funcall (vr:vs:st)    FMatch 2 = fmatch vs vr >>= \v -> return $ v*:st
-funcall (vl:vs:vr:st) FSub   3 = intFSub calcSub vr vs (toString vl) st
-funcall (vl:vs:vr:st) GSub   3 = intFSub calcGSub vr vs (toString vl) st
+funcall (vx:vy:st)    Atan2   2 = return $ (calcAtan2 vy vx)*:st
+funcall (top:st)      Cos     1 = return $ (proxyFcn cos top)*:st
+funcall (top:st)      Exp     1 = return $ (proxyFcn exp top)*:st
+funcall (top:st)      Int     1 = return $ (proxyFcn (fromIntegral.truncate) top)*:st
+funcall (top:st)      Log     1 = return $ (proxyFcn log top)*:st
+funcall (top:st)      Sin     1 = return $ (proxyFcn sin top)*:st
+funcall (top:st)      Sqrt    1 = return $ (proxyFcn sqrt top)*:st
+funcall st            Srand   0 = intSRand >> (return $ (VDouble 0)*:st)
+funcall (top:st)      Srand   1 = intSRand' top >> (return $ (VDouble 0)*:st)
+funcall st            Rand    0 = evalRand >>= \v -> return $ v*:st
+funcall (vt:vs:st)    Index   2 = return $ (calcIndex vs vt)*:st
+funcall (top:st)      Length  1 = return $ (calcLength top)*:st
+funcall (vp:vs:st)    Substr  2 = return $ (calcSubstr vs vp)*:st
+funcall (vn:vp:vs:st) Substr  3 = return $ (calcSubstr2 vs vp vn)*:st
+funcall (vr:vs:st)    FMatch  2 = fmatch vs vr >>= \v -> return $ v*:st
+funcall (vl:vs:vr:st) FSub    3 = intFSub calcSub vr vs (toString vl) st
+funcall (vl:vs:vr:st) GSub    3 = intFSub calcGSub vr vs (toString vl) st
+funcall st            Printf  n = intPrintf (reverse $ take n st) >> return ((VDouble 0)*:st) 
+funcall st            SPrintf n = let (rvs,r)  = splitAt n st
+                                      (fmt:vs) = reverse rvs
+                                  in return $ (valstr $ sprintf (toString fmt) vs)*:r
+
 
 fmatch :: Value -> Value -> Interpreter Value
 fmatch s r = do
@@ -342,3 +347,8 @@ intPopen cmd = do
          modify $ \s -> s { hcIPHandles = M.insert cmd p (hcIPHandles s) }
          return p
   where cmd' = B.unpack cmd
+
+
+intPrintf :: [Value] -> Interpreter ()
+{-# INLINE intPrintf #-}
+intPrintf (fmt:vs) = liftIO $ B.putStr $ sprintf (toString fmt) vs

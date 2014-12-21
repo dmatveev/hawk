@@ -1,4 +1,4 @@
-module Lang.Hawk.Runtime.Printf where
+module Lang.Hawk.Runtime.Printf (sprintf) where
 
 import Control.Applicative ((<$>))
 import Control.Monad.Writer

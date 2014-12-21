@@ -20,6 +20,7 @@ data BVar = ARGC | ARGV
 data BFunc = Atan2 | Cos | Exp | Int | Log | Sin | Sqrt
            | Srand | Rand 
            | Index | Length | Substr | FMatch | FSub | GSub | Split
+           | Printf | SPrintf
              deriving (Eq, Show)
 
 data Notation = Pre | Post

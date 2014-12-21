@@ -32,21 +32,23 @@ hawkBuiltinVars =
     ]
 
 hawkFunctions = 
-    [ ("atan2" , Atan2  )
-    , ("cos"   , Cos    )
-    , ("exp"   , Exp    )
-    , ("int"   , Int    )
-    , ("log"   , Log    )
-    , ("sin"   , Sin    )
-    , ("sqrt"  , Sqrt   )
-    , ("srand" , Srand  )
-    , ("rand"  , Rand   )
-    , ("index" , Index  )
-    , ("length", Length )
-    , ("substr", Substr )
-    , ("match" , FMatch )
-    , ("sub"   , FSub   )
-    , ("gsub"  , GSub   ) 
+    [ ("atan2"  , Atan2  )
+    , ("cos"    , Cos    )
+    , ("exp"    , Exp    )
+    , ("int"    , Int    )
+    , ("log"    , Log    )
+    , ("sin"    , Sin    )
+    , ("sqrt"   , Sqrt   )
+    , ("srand"  , Srand  )
+    , ("rand"   , Rand   )
+    , ("index"  , Index  )
+    , ("length" , Length )
+    , ("substr" , Substr )
+    , ("match"  , FMatch )
+    , ("sub"    , FSub   )
+    , ("gsub"   , GSub   ) 
+    , ("printf" , Printf )
+    , ("sprintf", SPrintf)
     ]
 
 hawkConstructs =
