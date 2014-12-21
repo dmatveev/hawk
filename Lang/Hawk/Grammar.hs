@@ -1,14 +1,14 @@
  module Lang.Hawk.Grammar where
 
 import qualified Data.ByteString.Char8 as B
+import Data.Char (isSpace)
 import Data.Maybe
 import Control.Applicative ((<$>), (<*>), (<*), (*>))
 import Control.Monad (when, liftM)
 
 import Text.Parsec
-import Text.Parsec.Language
-import qualified Text.Parsec.Token as P
-import Text.Parsec.Language
+import Lang.Hawk.Parsec.Language
+import qualified Lang.Hawk.Parsec.Token as P
 import Text.Parsec.Expr
 
 import Lang.Hawk.AST
@@ -202,7 +202,8 @@ stFPrint = FPRINT <$> stPrnCommon <*> fileMod <*> expr
 stPPrint = PPRINT <$> stPrnCommon <* symbol "|" <*> expr
    <?> "print to process"
 
-stBlock = Block <$> (symbol "{" *> many statement <* symbol "}") <?> "block of statements"
+stBlock = Block <$> (symbol "{" *> spc *> many statement <* symbol "}" <* spc)
+          <?> "block of statements"
 
 stIf = IF <$> (rsvd "if" >> parens expr) <*> statement <*> tryElse
   where tryElse = optionMaybe (rsvd "else" >> statement)
@@ -237,25 +238,25 @@ stDelete = DELETE <$> (rsvd "delete" >> (try arrayRef <|> variableRef))
 stBreak  = rsvd "break"    >> return BREAK
 stCont   = rsvd "continue" >> return CONT
 stNext   = rsvd "next"     >> return NEXT
-stNop    = symbol   ";"        >> return NOP
+stNop    = symbol   ";"    >> return NOP
 stExit   = EXIT   <$> (rsvd "exit"   >> optionMaybe expr)
 stReturn = RETURN <$> (rsvd "return" >> optionMaybe expr)
 
-statement = try stIf
-          <|> try stDoWhile
-          <|> try stWhile
-          <|> try stFor
-          <|> try stForEach
-          <|> try stBreak
-          <|> try stCont
-          <|> try stNext
-          <|> try stExit
-          <|> try stDelete
-          <|> try stReturn
-          <|> try stFPrint <|> try stPPrint <|> stPrint
-          <|> stNop
-          <|> stBlock
-          <|> stExpr
+statement = (try stIf
+            <|> try stDoWhile
+            <|> try stWhile
+            <|> try stFor
+            <|> try stForEach
+            <|> try stBreak
+            <|> try stCont
+            <|> try stNext
+            <|> try stExit
+            <|> try stDelete
+            <|> try stReturn
+            <|> try stFPrint <|> try stPPrint <|> stPrint
+            <|> stNop
+            <|> stBlock
+            <|> stExpr) <* spc
           <?> "statement"
 
 -- Top-level AWK constructs
@@ -278,6 +279,8 @@ section = do
     return $ Section mp ma
     <?> "section"
 
-action = Block <$> (char '{' *> whitespace *> many statement <* char '}') <?> "action"
+action = Block <$> (char '{' *> spc *> many statement <* char '}' <* spc) <?> "action"
 
-awk = whitespace *> many toplevel <* eof
+awk = spc *> many toplevel <* eof
+
+spc = whitespace `sepBy` newline
