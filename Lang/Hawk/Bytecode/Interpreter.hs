@@ -1,4 +1,4 @@
-module Lang.Hawk.Bytecode.Interpreter where
+module Lang.Hawk.Bytecode.Interpreter (execBC', setupContext) where
 
 import Data.IORef
 import Data.Fixed (mod')
@@ -9,6 +9,7 @@ import qualified Data.ByteString.Char8 as B
 
 import System.IO
 import System.Process
+import System.Random (mkStdGen, getStdGen, randomR)
 
 import Lang.Hawk.Basic
 import Lang.Hawk.Bytecode
@@ -352,3 +353,17 @@ intPopen cmd = do
 intPrintf :: [Value] -> Interpreter ()
 {-# INLINE intPrintf #-}
 intPrintf (fmt:vs) = liftIO $ B.putStr $ sprintf (toString fmt) vs
+
+
+intSRand :: Interpreter ()
+intSRand = liftIO getStdGen >>= \g -> modify (\s -> s {hcStdGen = g})
+
+intSRand' :: Value -> Interpreter ()
+intSRand' i = modify (\s -> s {hcStdGen = mkStdGen (toInt i)})
+
+evalRand :: Interpreter Value
+evalRand = do
+     g <- gets hcStdGen
+     let (r, g') = randomR (0.0, 1.0) g
+     modify $ (\s -> s { hcStdGen = g' })
+     return $! VDouble r

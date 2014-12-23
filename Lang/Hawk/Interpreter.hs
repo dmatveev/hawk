@@ -1,6 +1,17 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, OverloadedStrings #-}
 
-module Lang.Hawk.Interpreter where
+module Lang.Hawk.Interpreter
+             (Interpreter
+             , HawkContext(..)
+             , (*!)
+             , (*!!)
+             , splitIntoFields
+             , modBVar
+             , evalBVariableRef
+             , assignToField
+             , runInterpreter
+             , emptyContext
+             ) where
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Foldable as F 
@@ -9,7 +20,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
-import System.Random
+import System.Random (StdGen, mkStdGen)
 import System.IO (Handle)
 import System.Process (ProcessHandle)
 import Lang.Hawk.AST
@@ -179,18 +190,6 @@ modBVar RS       f = modify $ \s -> s { hcRS      = f (hcRS       s)}
 modBVar RSTART   f = modify $ \s -> s { hcRSTART  = f (hcRSTART   s)}
 modBVar SUBSEP   f = modify $ \s -> s { hcSUBSEP  = f (hcSUBSEP   s)}
 
-intSRand :: Interpreter ()
-intSRand = liftIO getStdGen >>= \g -> modify (\s -> s {hcStdGen = g})
-
-intSRand' :: Value -> Interpreter ()
-intSRand' i = modify (\s -> s {hcStdGen = mkStdGen (toInt i)})
-
-evalRand :: Interpreter Value
-evalRand = do
-     g <- gets hcStdGen
-     let (r, g') = randomR (0.0, 1.0) g
-     modify $ (\s -> s { hcStdGen = g' })
-     return $! VDouble r
 
 -- evalFunCall f args = do
 --      mfcn <- liftM (find (func f)) $ gets hcCode

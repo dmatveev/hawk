@@ -1,4 +1,4 @@
- module Lang.Hawk.Grammar where
+ module Lang.Hawk.Grammar (awk) where
 
 import qualified Data.ByteString.Char8 as B
 import Data.Char (isSpace)

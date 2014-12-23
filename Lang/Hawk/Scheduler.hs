@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Lang.Hawk.Scheduler where
+module Lang.Hawk.Scheduler (run) where
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
