@@ -19,7 +19,7 @@ import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
-import Lang.Hawk.Runtime.Printf
+import Lang.Hawk.Runtime.Printf (sprintf)
 
 dbg :: [Value] -> OpCode -> Interpreter ()
 {-# INLINE dbg #-}

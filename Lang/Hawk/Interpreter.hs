@@ -27,9 +27,9 @@ import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 import Lang.Hawk.Bytecode
-import Lang.Hawk.Bytecode.Compiler
-import Lang.Hawk.Runtime
-import Lang.Hawk.Runtime.Input
+import Lang.Hawk.Bytecode.Compiler (compile)
+import Lang.Hawk.Runtime (calcArith, splitIntoFields')
+import Lang.Hawk.Runtime.Input (Record, InputSource)
 
 data HawkContext = HawkContext
                  { hcInput    :: !InputSource
