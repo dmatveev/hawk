@@ -21,6 +21,7 @@ data BFunc = Atan2 | Cos | Exp | Int | Log | Sin | Sqrt
            | Srand | Rand 
            | Index | Length | Substr | FMatch | FSub | GSub | Split
            | Printf | SPrintf
+           | Close
              deriving (Eq, Show)
 
 data Notation = Pre | Post

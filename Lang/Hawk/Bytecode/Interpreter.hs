@@ -1,5 +1,7 @@
 module Lang.Hawk.Bytecode.Interpreter (execBC', setupContext) where
 
+import GHC.IO.Exception (ExitCode(..))
+
 import Data.IORef
 import Data.Fixed (mod')
 import Control.Monad.State.Strict
@@ -118,7 +120,7 @@ funcall st            Printf  n = intPrintf (reverse $ take n st) >> return ((VD
 funcall st            SPrintf n = let (rvs,r)  = splitAt n st
                                       (fmt:vs) = reverse rvs
                                   in return $ (valstr $ sprintf (toString fmt) vs)*:r
-
+funcall (top:st)      Close   1 = intClose (toString top) >>= \v -> return (v*:st)
 
 fmatch :: Value -> Value -> Interpreter Value
 fmatch s r = do
@@ -349,6 +351,24 @@ intPopen cmd = do
          return p
   where cmd' = B.unpack cmd
 
+-- TODO: What about input files/pipes? The book does not say anything about that.
+intClose :: B.ByteString -> Interpreter Value
+intClose name = do
+   mp <- liftM (M.lookup name) $ gets hcPHandles
+   case mp of
+      (Just (p,h)) -> do
+         modify $ \s -> s { hcPHandles = M.delete name (hcPHandles s) }
+         ex <- liftIO $ hClose h >> waitForProcess p
+         case ex of
+           ExitSuccess     -> return $ VDouble 0
+           (ExitFailure i) -> return $ VDouble $ fromIntegral i
+      Nothing -> do
+        mf <- liftM (M.lookup name) $ gets hcHandles
+        case mf of
+           (Just h) -> do modify $ \s -> s { hcHandles = M.delete name (hcHandles s) }
+                          liftIO (hClose h)
+                          return $ VDouble $ -1
+           Nothing  -> return $ VDouble $ -1
 
 intPrintf :: [Value] -> Interpreter ()
 {-# INLINE intPrintf #-}

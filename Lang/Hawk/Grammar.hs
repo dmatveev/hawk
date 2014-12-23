@@ -49,6 +49,7 @@ hawkFunctions =
     , ("gsub"   , GSub   ) 
     , ("printf" , Printf )
     , ("sprintf", SPrintf)
+    , ("close"  , Close  )
     ]
 
 hawkConstructs =
