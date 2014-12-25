@@ -5,6 +5,7 @@ import Control.Monad (forM_)
 import Control.Monad.Trans
 import System.IO
 import System.Environment (getArgs)
+import Options.Applicative
 import Text.Parsec (parse)
 import Text.Printf
 
