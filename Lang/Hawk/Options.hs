@@ -11,11 +11,12 @@ data HawkConfig = HawkConfig
                 , awkProgram :: HawkProg
                 , awkVars    :: [String]
                 , awkFiles   :: [String]
+                , awkDebug   :: Bool
                 }
                 deriving (Show)
 
 hawkConfig :: Parser HawkConfig
-hawkConfig = HawkConfig <$> hawkFS <*> hawkProg <*> hawkVars <*> hawkInput
+hawkConfig = HawkConfig <$> hawkFS <*> hawkProg <*> hawkVars <*> hawkInput <*> hawkDbg
 
 hawkFS :: Parser (Maybe String)
 hawkFS = optional $ strOption
@@ -43,6 +44,11 @@ hawkInput :: Parser [String]
 hawkInput = arguments str
             ( metavar "file ..."
             <> help "Input file(s) to process")
+
+hawkDbg :: Parser Bool
+hawkDbg = switch
+            (long "debug"
+            <> help "Dump Hawk compiled \"bytecode\" without executing")
 
 parseHawkArgs :: IO HawkConfig
 parseHawkArgs = execParser $ info (helper <*> hawkConfig) fullDesc
