@@ -1,10 +1,5 @@
-{-# LANGUAGE TupleSections #-}
-
-import qualified Data.Sequence as D
-import Data.Foldable (toList)
-import Control.Exception
-import Control.Monad (forM_, liftM)
-import Control.Monad.Trans
+import Control.Exception (bracket)
+import Control.Monad (forM_)
 import System.IO
 import System.Environment (getArgs)
 import Text.Parsec (parse)
@@ -12,15 +7,15 @@ import Text.Printf (printf)
 
 import Lang.Hawk.Options
 import Lang.Hawk.Grammar (awk)
-import Lang.Hawk.Analyzer
+-- import Lang.Hawk.Analyzer
 import Lang.Hawk.Scheduler
-import Lang.Hawk.Bytecode.Compiler
+-- import Lang.Hawk.Bytecode.Compiler
 
 runHawk :: HawkConfig -> IO ()
 runHawk cfg = do
   (progFile, source) <- case (awkProgram cfg) of
      (HawkString s) -> return ("", s)
-     (HawkFile f)   -> liftM (f,) $ readFile f
+     (HawkFile f)   -> readFile f >>= \s -> return (f,s)
   let ast = parse awk progFile source
   case ast of
     (Left e)  -> putStrLn $ show e
@@ -43,10 +38,4 @@ runHawk cfg = do
 
 main :: IO ()
 main = parseHawkArgs >>= runHawk
-  -- args <- getArgs
-  -- case args of
-  --   [progFile, inputFile] -> runHawk progFile inputFile
-  --   [progFile]            -> runTrace progFile
-  --   otherwise -> putStrLn $ "Usage: Hawk PROGFILE INPUTFILE\n" ++
-  --                           "       Hawk PROGFILE"
 
