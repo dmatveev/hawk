@@ -22,8 +22,7 @@ runHawk cfg = do
     (Left e)  -> putStrLn $ show e
     (Right a) -> do
       if awkDebug cfg
-      then do src <- awkPrepare a
-              let bc = runCompiler (mapM_ compileTL src) csInitial
+      then do let bc = runCompiler (mapM_ compileTL a) csInitial
               forM_ (zip [0::Int,1..] (toList bc)) $ \(i, c) -> printf "%4d  %s\n" i (show c)
       else case awkFiles cfg of
         []        -> run a stdin ""

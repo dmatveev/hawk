@@ -14,7 +14,6 @@ module Lang.Hawk.Interpreter
              ) where
 
 import qualified Data.ByteString.Char8 as B
-import qualified Data.Foldable as F 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
 import Control.Monad.Trans
@@ -26,6 +25,7 @@ import System.Process (ProcessHandle)
 import Lang.Hawk.AST
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
+import Lang.Hawk.Analyzer
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Bytecode.Compiler (compile)
 import Lang.Hawk.Runtime (calcArith, splitIntoFields')
@@ -67,43 +67,45 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-emptyContext :: AwkSource -> InputSource -> HawkContext
-emptyContext s i = HawkContext
-                 { hcInput    = i
-                 , hcWorkload = []
+emptyContext :: AwkSource -> InputSource -> IO HawkContext
+emptyContext s i = do
+  let (startup, opcodes, shutdown) = compile s
+  rt <- mkRewriteTable (analyze s)
+  return $ HawkContext
+           { hcInput    = i
+           , hcWorkload = []
 
-                 , hcFields   = IM.empty
-                 , hcHandles  = M.empty
-                 , hcPHandles = M.empty
-                 , hcIPHandles= M.empty
-                 , hcFInputs  = M.empty
+           , hcFields   = IM.empty
+           , hcHandles  = M.empty
+           , hcPHandles = M.empty
+           , hcIPHandles= M.empty
+           , hcFInputs  = M.empty
 
-                 , hcThisLine = ""
-                 , hcStdGen   = mkStdGen 0
+           , hcThisLine = ""
+           , hcStdGen   = mkStdGen 0
 
-                 , hcSTARTUP  = F.toList startup
-                 , hcOPCODES  = F.toList opcodes
-                 , hcSHUTDOWN = F.toList shutdown
+           , hcSTARTUP  = awkPrepare rt startup
+           , hcOPCODES  = awkPrepare rt opcodes
+           , hcSHUTDOWN = awkPrepare rt shutdown
 
-                 , hcKEYS     = []
-                 , hcKSTACK   = []
+           , hcKEYS     = []
+           , hcKSTACK   = []
 
-                 , hcARGC     = defstr  ""
-                 , hcARGV     = defstr  ""
-                 , hcFILENAME = defstr  ""
-                 , hcFNR      = VDouble 0
-                 , hcFS       = defstr  " "
-                 , hcNF       = VDouble 0
-                 , hcNR       = VDouble 0
-                 , hcOFMT     = defstr  "%.6f"
-                 , hcOFS      = defstr  " "
-                 , hcORS      = defstr  "\n"
-                 , hcRLENGTH  = VDouble  0
-                 , hcRS       = defstr  "\n"
-                 , hcRSTART   = VDouble 0
-                 , hcSUBSEP   = defstr  "\034"
-                 }
-  where (startup, opcodes, shutdown) = compile s
+           , hcARGC     = defstr  ""
+           , hcARGV     = defstr  ""
+           , hcFILENAME = defstr  ""
+           , hcFNR      = VDouble 0
+           , hcFS       = defstr  " "
+           , hcNF       = VDouble 0
+           , hcNR       = VDouble 0
+           , hcOFMT     = defstr  "%.6f"
+           , hcOFS      = defstr  " "
+           , hcORS      = defstr  "\n"
+           , hcRLENGTH  = VDouble  0
+           , hcRS       = defstr  "\n"
+           , hcRSTART   = VDouble 0
+           , hcSUBSEP   = defstr  "\034"
+           }
 
 newtype Interpreter a = Interpreter (StateT HawkContext IO a)
                         deriving (Monad, MonadIO, MonadState HawkContext,

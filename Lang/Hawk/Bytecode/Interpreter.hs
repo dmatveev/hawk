@@ -81,7 +81,7 @@ bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
 {-# INLINE execBC' #-}
-execBC' src = seq src $ execBC src [] src
+execBC' src = execBC src [] src
 
 execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
 execBC src st         []             = return (True, st)

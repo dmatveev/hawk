@@ -5,6 +5,7 @@ module Lang.Hawk.Bytecode.Compiler where
 import Data.Maybe (fromJust)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Sequence as D
+import qualified Data.Foldable as F (toList)
 import Data.Sequence ((|>))
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
@@ -16,7 +17,7 @@ import Lang.Hawk.Value
 import Lang.Hawk.Analyzer
 
 data CompilerState = CompilerState
-                     { csBC  :: Bytecode
+                     { csBC  :: (D.Seq OpCode)
                      , csCur :: Int
                      , csLS  :: Maybe LoopState
                      }
@@ -37,7 +38,7 @@ initialLoopState enter = LoopState enter [] [] []
 newtype Compiler a = Compiler (State CompilerState a)
                    deriving (Monad, MonadState CompilerState, Applicative, Functor)
 
-runCompiler :: Compiler a -> CompilerState -> Bytecode
+runCompiler :: Compiler a -> CompilerState -> D.Seq OpCode
 runCompiler (Compiler c) b = csBC $ execState c b
 
 loop :: Compiler () -> Compiler ()
@@ -87,8 +88,8 @@ compileE :: Expression -> Compiler ()
 compileE (Arith a l r)      = compileE l >> compileE r >> op (ARITH a)
 compileE (Const a)          = op (PUSH (toValue a))
 compileE (FieldRef e)       = compileE e >> op FIELD
-compileE (Variable r)       = op (VAR r)
-compileE (Array a e)        = compileE e >> op (ARR a)
+compileE (VariableRef r)    = op (VAR' r)
+compileE (ArrayRef a e)     = compileE e >> op (ARR' a)
 compileE (BuiltInVar b)     = op (BVAR b)
 compileE (Assignment m p e) = compileASGN m p e
 compileE (Incr n e)         = compileINCR n e
@@ -97,7 +98,7 @@ compileE (Relation c l r)   = compileE l >> compileE r >> op (CMP c)
 compileE (Not e)            = compileE e >> op NOT
 compileE (Neg e)            = compileE e >> op NEG
 compileE (Id e)             = compileE e
-compileE (In' e r)          = compileE e >> op (IN r) 
+compileE (In e (VariableRef v)) = compileE e >> op (IN' v) 
 compileE (Logic AND l r)    = compileAND l r
 compileE (Logic OR  l r)    = compileOR  l r
 compileE (Match l r)        = compileE l >> compileE r >> op MATCH
@@ -108,11 +109,11 @@ compileE (FunCall Split  vs) = compileSPLIT vs
 compileE (FunCall s      vs) = mapM_ compileE vs >> (op $ CALL s (length vs))
 compileE (Concat l r)        = compileE l >> compileE r >> op CAT
 compileE (Getline)           = op $ GETL
-compileE (GetlineVar (Variable v)) = op $ GETLV v
+compileE (GetlineVar (VariableRef v)) = op $ GETLV' v
 compileE (FGetline f)        = compileE f >> op FGETL
-compileE (FGetlineVar (Variable v) f) = compileE f >> op (FGETLV v)
+compileE (FGetlineVar (VariableRef v) f) = compileE f >> op (FGETLV' v)
 compileE (PGetline cmd)      = compileE cmd >> op PGETL
-compileE (PGetlineVar cmd (Variable v)) = compileE cmd >> op (PGETLV v)
+compileE (PGetlineVar cmd (VariableRef v)) = compileE cmd >> op (PGETLV' v)
 compileE (InlineIf c t e)    = compileIIF c t e
 
 compileFSub f [a1,a2] = do
@@ -124,21 +125,21 @@ compileFSub f [a1,a2] = do
    op $ PUSH (VDouble 0)
    op $ FSET
 
-compileFSub f [a1,a2,(Variable a)] = do
+compileFSub f [a1,a2,(VariableRef a)] = do
    compileE a1
    compileE a2
-   op $ VAR a
+   op $ VAR' a
    op $ CALL f 3
-   op $ VSET a
+   op $ VSET' a
 
-compileFSub f [a1,a2,(Array a i)] = do
+compileFSub f [a1,a2,(ArrayRef a i)] = do
    compileE a1
    compileE a2
    compileE i
-   op $ ARR a
+   op $ ARR' a
    op $ CALL f 3
    compileE i
-   op $ ASET a
+   op $ ASET' a
 
 compileFSub f [a1,a2,(FieldRef e)] = do
    compileE a1
@@ -149,30 +150,30 @@ compileFSub f [a1,a2,(FieldRef e)] = do
    compileE e
    op $ FSET
 
-compileSPLIT [a1,(Array' a)] = do
+compileSPLIT [a1,(VariableRef a)] = do
    compileE a1
    op $ BVAR FS
-   op $ SPLIT a
+   op $ SPLIT' a
 
-compileSPLIT [a1,(Array' a),a3] = do
+compileSPLIT [a1,(VariableRef a),a3] = do
    compileE a1
    compileE a3
-   op $ SPLIT a
+   op $ SPLIT' a
 
 compileASGN m p e =
    if m == Set
    then compileE e >> compileSET p
    else compileMOD' Pre m p (compileE e)
 
-compileSET (Variable r  ) = op (VSET r)
-compileSET (Array    a i) = compileE i >> op (ASET a)
-compileSET (FieldRef i  ) = compileE i >> op FSET
-compileSET (BuiltInVar b) = op (BSET b)
+compileSET (VariableRef r  )  = op (VSET' r)
+compileSET (ArrayRef    a i)  = compileE i >> op (ASET' a)
+compileSET (FieldRef      i) = compileE i >> op FSET
+compileSET (BuiltInVar  b  ) = op (BSET b)
 
-compileMOD m (Variable r  ) = op (VMOD m r)
-compileMOD m (Array    a i) = compileE i >> op (AMOD m a)
-compileMOD m (FieldRef i  ) = compileE i >> op (FMOD m)
-compileMOD m (BuiltInVar b) = op (BMOD m b)
+compileMOD m (VariableRef r  ) = op (VMOD' m r)
+compileMOD m (ArrayRef    a i) = compileE i >> op (AMOD' m a)
+compileMOD m (FieldRef      i) = compileE i >> op (FMOD m)
+compileMOD m (BuiltInVar  b  ) = op (BMOD m b)
 
 compileMOD' Pre m p ce = do
   ce             -- compile the expression, put its value on stack
@@ -215,7 +216,7 @@ compileS (Block ss)        = drp $ mapM_ compileS ss
 compileS (IF t th el)      = compileIF t th el
 compileS (WHILE e s)       = compileWHILE e s
 compileS (FOR mi mc ms st) = compileFOR mi mc ms st
-compileS (FOREACH' r a st) = compileFOREACH r a st
+compileS (FOREACH r a st)  = compileFOREACH r a st
 compileS (DO s e)          = compileDO s e
 compileS (PRINT es)        = mapM_ compileE (reverse es) >> op (PRN (length es))
 compileS (FPRINT es m fe)  = mapM_ compileE (reverse es) >> compileE fe >> op (FPRN (length es) m)
@@ -225,8 +226,8 @@ compileS (CONT)            = loopCont
 compileS (NEXT)            = op $ NXT
 compileS (EXIT _)          = op $ EX -- TODO exit code
 compileS (NOP)             = op $ DRP
-compileS (DELELM r e)      = compileE e >> op (ADEL r)
-compileS (DELARR r)        = op (ADRP r)
+compileS (DELELM r e)      = compileE e >> op (ADEL' r)
+compileS (DELARR r)        = op (ADRP' r)
 
 compileIF t th el = do
    compileE t
@@ -266,12 +267,12 @@ compileFOR mi mc ms st = do
 compileWHILE e s = loop $ compileE e >> loopCheck >> compileS s
 compileDO    s e = loop $ compileS s >> compileE e >> loopCheck
 
-compileFOREACH r a st = do
-   op $ (FETCH a)
+compileFOREACH (VariableRef r) a st = do
+   op $ (FETCH' a)
    loop $ do
       op $ ACHK
       loopCheck
-      op $ (ANXT r)
+      op $ (ANXT' r)
       compileS st
    op $ KDRP
 
@@ -307,9 +308,14 @@ compileSection mp ms = do
                          op $ PUSH $ valstr (B.pack s)
                          op $ MATCH
 
-compile :: AwkSource -> (Bytecode, Bytecode, Bytecode)
+compile :: AwkSource -> ([OpCode], [OpCode], [OpCode])
 compile src = (cc begins, cc actions, cc ends)
-  where cc s    = runCompiler (mapM compileTL s) csInitial
+  where cc s    = F.toList $ runCompiler (mapM compileTL s) csInitial
         begins  = filter isBegin src
         actions = procUnits src
         ends    = filter isEnd src
+
+procUnits :: AwkSource -> AwkSource
+procUnits s = filter p s
+  where p (Section mp _) = not (mp == Just BEGIN || mp == Just END)
+        p _              = False

@@ -2,18 +2,13 @@ module Lang.Hawk.AST where
 
 import Lang.Hawk.Basic
 
-import Data.IORef
 import Lang.Hawk.Value
-
-instance Show (IORef a) where
-   show _ = "<ioref>"
 
 data Expression = Arith ArithOp Expression Expression
                 | Const Literal
                 | FieldRef Expression
-                | VariableRef String | Variable (IORef Value) 
+                | VariableRef String
                 | ArrayRef String Expression
-                | Array (IORef Array) Expression | Array' (IORef Array)
                 | BuiltInVar BVar
                 | Assignment ArithOp Expression Expression
                 | Incr Notation Expression
@@ -23,7 +18,7 @@ data Expression = Arith ArithOp Expression Expression
                 | Neg Expression
                 | Id Expression
                 | Concat Expression Expression
-                | In Expression Expression | In' Expression (IORef Array)
+                | In Expression Expression
                 | Logic LogOp Expression Expression
                 | Match Expression Expression
                 | NoMatch Expression Expression
@@ -43,7 +38,6 @@ data Statement = Expression Expression
                | WHILE Expression Statement
                | FOR (Maybe Expression) (Maybe Expression) (Maybe Expression) Statement
                | FOREACH Expression String Statement
-               | FOREACH' (IORef Value) (IORef Array) Statement
                | DO Statement Expression
                | PRINT [Expression]
                | FPRINT [Expression] FileMod Expression
@@ -54,8 +48,8 @@ data Statement = Expression Expression
                | EXIT (Maybe Expression)
                | NOP
                | DELETE Expression
-               | DELARR (IORef Array)
-               | DELELM (IORef Array) Expression
+               | DELARR String
+               | DELELM String Expression
                | RETURN (Maybe Expression)
                  deriving (Eq, Show)
 

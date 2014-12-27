@@ -95,7 +95,9 @@ runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
 worker :: AwkSource -> MVar (Maybe Workload) -> IO ()
-worker src mq = runInterpreter wrkMain (emptyContext src $ External mq) >> return ()
+worker src mq = do
+    ctx <- emptyContext src $ External mq
+    runInterpreter wrkMain ctx >> return ()
  where
    wrkMain = do
       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
@@ -117,7 +119,7 @@ worker src mq = runInterpreter wrkMain (emptyContext src $ External mq) >> retur
       case w of
         [] -> return True
         (r:rs) -> do
-           setupContext r rs  
+           setupContext r rs
            (cont, _) <- (gets hcOPCODES >>= execBC')
            if cont then wrkProc else return False 
 
@@ -136,8 +138,7 @@ run :: AwkSource -> Handle -> String -> IO ()
 run src h file = inThread $ do
     q <- newEmptyMVar
     j <- newEmptyMVar
-    src' <- awkPrepare src
     forkIO $ runReaderThread reader h "\n" " " q >> return ()
-    forkFinally (worker src' q) $ \_ -> putMVar j ()
+    forkFinally (worker src q) $ \_ -> putMVar j ()
     takeMVar j
     return ()

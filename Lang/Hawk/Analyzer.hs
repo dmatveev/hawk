@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
 
-module Lang.Hawk.Analyzer where
+module Lang.Hawk.Analyzer (Effects, analyze, awkPrepare, mkRewriteTable) where
 
 import Data.IORef
 import Data.List (find)
@@ -10,10 +10,11 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
-
 import Lang.Hawk.AST
+import Lang.Hawk.Bytecode
 
 -- Analyze the program's control flow and how state (variables) is accessed.
 -- We are interested only in processing actions (i.e. all except BEGIN/END).
@@ -207,11 +208,6 @@ traceTL _                     = return ()
 analyze :: AwkSource -> Effects
 analyze ts = runTracer (mapM_ traceTL ts) emptyEffects
 
-procUnits :: AwkSource -> AwkSource
-procUnits s = filter p s
-  where p (Section mp _) = not (mp == Just BEGIN || mp == Just END)
-        p _              = False
-
 awkPure :: AwkSource -> Bool
 awkPure s =  noGlobalVars && noBVarsModified && noArrays
           && noFunCalls   && noRangePatterns && noControlFlow
@@ -225,20 +221,21 @@ awkPure s =  noGlobalVars && noBVarsModified && noArrays
 
      efs = analyze s
 
-awkPrepare :: AwkSource -> IO AwkSource
-awkPrepare src = do
-   let efs = analyze src
-   t <- RewriteTable
-        <$> (liftM M.fromList $ mapM (mkRef $ VDouble 0) (map fst $ M.toList $ eVars efs))
-        <*> (liftM M.fromList $ mapM (mkRef $ M.empty)   (S.toList $ eArrays efs))
-   return $ runRewrite (mapM putRefsTL src) t
- where mkRef a s = (s,) <$> newIORef a
+awkPrepare :: RewriteTable -> [OpCode] -> [OpCode]
+awkPrepare t ops = runRewrite (mapM putRefsOp ops) t
 
 -- TODO: Integrate into Parser (AFAIR Parsec allows it)
 data RewriteTable = RewriteTable
                     { rtVars :: M.Map String (IORef Value)
                     , rtArrs :: M.Map String (IORef Array)
                     }
+
+mkRewriteTable :: Effects -> IO RewriteTable
+mkRewriteTable efs =
+  RewriteTable
+    <$> (liftM M.fromList $ mapM (mkRef $ VDouble 0) (map fst $ M.toList $ eVars efs))
+    <*> (liftM M.fromList $ mapM (mkRef $ M.empty)   (S.toList $ eArrays efs))
+ where mkRef a s = (s,) <$> newIORef a
 
 newtype Rewrite a = Rewrite (Reader RewriteTable a)
                    deriving (Monad, MonadReader RewriteTable, Applicative, Functor)
@@ -249,79 +246,20 @@ runRewrite (Rewrite r) t = runReader r t
 var s = asks ((M.! s) . rtVars)
 arr s = asks ((M.! s) . rtArrs)
 
-putRefsE :: Expression -> Rewrite Expression
-putRefsE (Arith a lhs rhs)        = Arith      <$> pure a <*> putRefsE lhs <*> putRefsE rhs
-putRefsE e@(Const _)              = return e   
-putRefsE (FieldRef e)             = FieldRef   <$> putRefsE e
-putRefsE (VariableRef s)          = Variable   <$> var s
-putRefsE (ArrayRef s e)           = Array      <$> arr s <*> putRefsE e
-putRefsE e@(BuiltInVar _)         = return e
-putRefsE (Assignment m p v)       = Assignment <$> pure m <*> putRefsE p <*> putRefsE v
-putRefsE (Incr p e)               = Incr       <$> pure p <*> putRefsE e
-putRefsE (Decr p e)               = Decr       <$> pure p <*> putRefsE e
-putRefsE (Relation r lhs rhs)     = Relation   <$> pure r <*> putRefsE lhs <*> putRefsE rhs
-putRefsE (Not e)                  = Not        <$> putRefsE e
-putRefsE (Neg e)                  = Neg        <$> putRefsE e
-putRefsE (Id e)                   = Id         <$> putRefsE e
-putRefsE (In v (VariableRef a))   = In'        <$> putRefsE v <*> arr a
-putRefsE (Logic l lhs rhs)        = Logic      <$> pure l <*> putRefsE lhs <*> putRefsE rhs
-putRefsE (Match lhs rhs)          = Match      <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (NoMatch lhs rhs)        = NoMatch    <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (FunCall s args)         = prf s args
-putRefsE (InlineIf c t f)         = InlineIf   <$> putRefsE  c  <*> putRefsE t <*> putRefsE f
-putRefsE (Concat lhs rhs)         = Concat     <$> putRefsE lhs <*> putRefsE rhs
-putRefsE (Getline)                = return Getline
-putRefsE (GetlineVar v)           = GetlineVar <$> putRefsE v
-putRefsE (FGetline f)             = FGetline   <$> putRefsE f
-putRefsE (FGetlineVar v f)        = FGetlineVar<$> putRefsE v <*> putRefsE f
-putRefsE (PGetline cmd)           = PGetline   <$> putRefsE cmd
-putRefsE (PGetlineVar cmd v)      = PGetlineVar<$> putRefsE cmd <*> putRefsE v
-
-prf Split [a1,(VariableRef a)]    = FunCall <$> pure Split
-                                            <*> sequence [putRefsE a1, (Array' <$> arr a)]
-prf Split [a1,(VariableRef a),a3] = FunCall <$> pure Split
-                                            <*> sequence [putRefsE a1, (Array' <$> arr a), putRefsE a3]
-prf f vs                          = FunCall <$> pure f <*> mapM putRefsE vs 
-
-putRefsS :: Statement -> Rewrite Statement
-putRefsS (Expression e)           = Expression <$> putRefsE e
-putRefsS (Block ss)               = Block      <$> mapM putRefsS ss
-putRefsS (IF e s ms)              = IF         <$> putRefsE e <*> putRefsS s <*> msrefs ms
-putRefsS (WHILE e s)              = WHILE      <$> putRefsE e <*> putRefsS s
-putRefsS (FOR mi mc ms s)         = FOR        <$> mrefs mi <*> mrefs mc <*> mrefs ms
-                                               <*> putRefsS s
-putRefsS (FOREACH (VariableRef v) a s) = FOREACH' <$> var v <*> arr a <*> putRefsS s
-putRefsS (DO s e)                 = DO         <$> putRefsS s <*> putRefsE e
-putRefsS (PRINT es)               = PRINT      <$> mapM putRefsE es
-putRefsS (FPRINT es m fe)         = FPRINT     <$> mapM putRefsE es <*> pure m <*> putRefsE fe
-putRefsS (PPRINT es fe)           = PPRINT     <$> mapM putRefsE es <*> putRefsE fe
-putRefsS (EXIT me)                = EXIT       <$> mrefs me
-putRefsS (BREAK)                  = return BREAK
-putRefsS (CONT)                   = return CONT
-putRefsS (NEXT)                   = return NEXT
-putRefsS (NOP)                    = return NOP
-putRefsS (DELETE (VariableRef s)) = DELARR <$> arr s
-putRefsS (DELETE (ArrayRef s e))  = DELELM <$> arr s <*> putRefsE e
-putRefsS (RETURN me)              = RETURN <$> mrefs me
-
-putRefsP :: Pattern -> Rewrite Pattern
-putRefsP (EXPR e)               = EXPR <$> putRefsE e
-putRefsP (RANGE ps pe)          = RANGE <$> putRefsP ps <*> putRefsP pe
-putRefsP BEGIN                  = return BEGIN
-putRefsP END                    = return END
-putRefsP re@(RE _)              = return re
-
-putRefsTL :: TopLevel -> Rewrite TopLevel
-putRefsTL (Section mp ms)       = Section <$> mm putRefsP mp <*> mm putRefsS ms
-putRefsTL (Function s args ss)  = Function <$> pure s <*> pure args <*> putRefsS ss
-
--- TODO: FMAP is the next step...
-mm :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
-mm  f (Just a) = f a >>= (return . Just)
-mm  f Nothing  = return Nothing
-
-mrefs :: Maybe Expression -> Rewrite (Maybe Expression)
-mrefs me = mm putRefsE me
-
-msrefs :: Maybe Statement -> Rewrite (Maybe Statement)
-msrefs ms = mm putRefsS ms
+putRefsOp :: OpCode -> Rewrite OpCode
+putRefsOp (VAR'    s) = VAR   <$> var s
+putRefsOp (VSET'   s) = VSET  <$> var s
+putRefsOp (VMOD' m s) = VMOD  <$> pure m <*> var s
+putRefsOp (ARR'    s) = ARR   <$> arr s
+putRefsOp (ASET'   s) = ASET  <$> arr s
+putRefsOp (AMOD' m s) = AMOD  <$> pure m <*> arr s
+putRefsOp (ANXT'   s) = ANXT  <$> var s
+putRefsOp (FETCH'  s) = FETCH <$> arr s 
+putRefsOp (IN'     s) = IN    <$> arr s
+putRefsOp (ADEL'   s) = ADEL  <$> arr s
+putRefsOp (ADRP'   s) = ADRP  <$> arr s
+putRefsOp (SPLIT'  s) = SPLIT <$> arr s
+putRefsOp (GETLV'  s) = GETLV <$> var s
+putRefsOp (FGETLV' s) = FGETLV <$> var s
+putRefsOp (PGETLV' s) = PGETLV <$> var s
+putRefsOp op          = return op
