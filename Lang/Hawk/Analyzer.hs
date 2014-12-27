@@ -262,4 +262,4 @@ putRefsOp (SPLIT'  s) = SPLIT <$> arr s
 putRefsOp (GETLV'  s) = GETLV <$> var s
 putRefsOp (FGETLV' s) = FGETLV <$> var s
 putRefsOp (PGETLV' s) = PGETLV <$> var s
-putRefsOp op          = return op
+putRefsOp op          = return (seq op op)

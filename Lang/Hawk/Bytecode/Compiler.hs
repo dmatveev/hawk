@@ -55,7 +55,7 @@ loop body = do
    modify $ \s -> s { csLS = oldState }
 
 op :: OpCode -> Compiler ()
-op c = modify $ \s -> s {csBC = (csBC s) |> c, csCur = succ (csCur s)}
+op c = modify $ \s -> s {csBC = (csBC s) |> seq c c, csCur = succ (csCur s)}
 
 nop :: Compiler Int
 nop = do
