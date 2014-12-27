@@ -5,11 +5,6 @@ import Lang.Hawk.Basic
 import Data.IORef
 import Lang.Hawk.Value
 
-data Literal = LitNumeric Double
-             | LitStr String
-             | LitRE String
-               deriving (Eq, Show)
-
 instance Show (IORef a) where
    show _ = "<ioref>"
 

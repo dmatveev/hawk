@@ -1,6 +1,11 @@
 module Lang.Hawk.Options (HawkConfig(..), HawkProg(..), parseHawkArgs) where
 
+import qualified Text.Parsec as P
 import Options.Applicative
+
+import Lang.Hawk.Value
+import qualified Lang.Hawk.AST as A (Expression(..))
+import Lang.Hawk.Grammar (setVar)
 
 data HawkProg = HawkString String
               | HawkFile String
@@ -9,11 +14,18 @@ data HawkProg = HawkString String
 data HawkConfig = HawkConfig
                 { awkFS      :: Maybe String
                 , awkProgram :: HawkProg
-                , awkVars    :: [String]
+                , awkVars    :: [HawkVar]
                 , awkFiles   :: [String]
                 , awkDebug   :: Bool
                 }
                 deriving (Show)
+
+type HawkVar = (A.Expression, Value)
+
+varReader :: Monad m => String -> m HawkVar 
+varReader s = case P.parse setVar "" s of
+   Left e                  -> fail $ show e
+   Right (p,(A.Const lit)) -> return (p, toValue lit)
 
 hawkConfig :: Parser HawkConfig
 hawkConfig = HawkConfig <$> hawkFS <*> hawkProg <*> hawkVars <*> hawkInput <*> hawkDbg
@@ -33,9 +45,10 @@ hawkProg = (HawkString <$> argument str
               <> metavar "progfile"
               <> help "AWK program source file"))
 
-hawkVars :: Parser [String]
-hawkVars = many $ strOption
+hawkVars :: Parser [HawkVar]
+hawkVars = many $ nullOption
             (short 'v'
+             <> reader varReader
              <> metavar "var=value"
              <> help "Set AWK variable 'var' to 'value'")
 

@@ -57,6 +57,11 @@ toString (VDouble d) =
         nrs = length rs
         sgn = if d >= 0 then "" else "-"
 
+toValue :: Literal -> Value
+toValue (LitNumeric i) = VDouble i
+toValue (LitStr     s) = valstr $ B.pack s
+toValue (LitRE      s) = valstr $ B.pack s
+
 vBool b = VDouble $! if b then 1 else 0
 vNot  v = VDouble $! if (toBool v) then 0 else 1
 vNeg  v = VDouble $! - toDouble v

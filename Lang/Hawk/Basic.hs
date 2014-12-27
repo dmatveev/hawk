@@ -1,5 +1,10 @@
 module Lang.Hawk.Basic where
 
+data Literal = LitNumeric Double
+             | LitStr String
+             | LitRE String
+               deriving (Eq, Show)
+
 data ArithOp = Set | Add | Sub | Mul | Div | Mod | Pow
                deriving (Eq, Show)
 

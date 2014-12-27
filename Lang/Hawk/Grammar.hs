@@ -1,4 +1,4 @@
- module Lang.Hawk.Grammar (awk) where
+ module Lang.Hawk.Grammar (awk, setVar) where
 
 import qualified Data.ByteString.Char8 as B
 import Data.Char (isSpace)
@@ -287,3 +287,7 @@ action = Block <$> (char '{' *> spc *> many statement <* char '}' <* spc) <?> "a
 awk = spc *> many toplevel <* eof
 
 spc = whitespace `sepBy` newline
+
+setVar = (,) <$> (try variableRef <|> builtInVars) <*> (symbol "=" *> lit)
+  where lit = (try $ numericLit <* eof) <|> (try $ regexLit <* eof) <|> str
+        str = (Const . LitStr) <$> many anyChar

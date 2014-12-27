@@ -82,11 +82,6 @@ drp c = c >> do
       (_ D.:> DRP) -> return ()
       (_ D.:> _)   -> op DRP
 
-toValue :: Literal -> Value
-toValue (LitNumeric i) = VDouble i
-toValue (LitStr     s) = valstr $ B.pack s
-toValue (LitRE      s) = valstr $ B.pack s
-
 
 compileE :: Expression -> Compiler ()
 compileE (Arith a l r)      = compileE l >> compileE r >> op (ARITH a)
