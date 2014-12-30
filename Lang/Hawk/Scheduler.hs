@@ -53,8 +53,7 @@ sendWorkload :: ReaderThread ()
 sendWorkload = do
     tmp <- gets rTmp
     if (not $ null tmp)
-    then do -- wid <- nextWID
-            w <- Workload <$> nextWID <*> (pure $ reverse tmp)
+    then do w <- Workload <$> nextWID <*> (pure $ reverse tmp)
             gets rQ >>= (liftIO . flip putMVar (Just w))
             modify $ \s -> s { rTmp = [] }
     else do qq <- gets rQ
@@ -76,20 +75,17 @@ enqueue l = do
 reader :: ReaderThread ()
 reader = do
      h <- gets rH
+     is <- liftIO $ fromHandle h
      rs <- gets rRS
-     readLoop h rs B.empty False
+     readLoop is rs
      sendWorkload
      sendWorkload
   where
-    readLoop h rs thisBuf eof = do
-      let nrs = B.length rs
-      case B.breakSubstring rs thisBuf of
-         (l, rest) | B.null l && B.null rest && eof -> return ()
-                   |             B.null rest && eof -> enqueue l
-                   | B.null rest && not eof -> do
-                        nextChunk <- liftIO $ B.hGet h 8192
-                        readLoop h rs (B.append thisBuf nextChunk) (B.null nextChunk)  
-                   | otherwise -> enqueue l >> readLoop h rs (B.drop nrs rest) eof
+    readLoop is rs = do
+      ml <- liftIO $ nextLine is rs
+      case ml of
+        (Just l) -> enqueue l >> readLoop is rs
+        Nothing  -> return ()
 
 runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }

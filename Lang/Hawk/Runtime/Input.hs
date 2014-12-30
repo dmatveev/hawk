@@ -4,7 +4,6 @@ import Data.IORef
 import qualified Data.ByteString.Char8 as B
 import qualified Data.IntMap as IM
 import Control.Concurrent
-import Control.Monad.IO.Class
 
 import System.IO
 
@@ -16,45 +15,41 @@ data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
 data Workload = Workload { wID :: !Integer, wRS :: ![Record] }
                 deriving Show
 
-data InputSource = External (MVar (Maybe Workload))
-                 | FromHandle Handle (IORef B.ByteString) (IORef Bool)
+data InputSource = External !(MVar (Maybe Workload))
+                 | FromHandle !Handle !(IORef B.ByteString) !(IORef Bool)
 
-fromHandle :: MonadIO m => Handle -> m InputSource
+fromHandle :: Handle -> IO InputSource
 fromHandle h = do
-   b <- liftIO $ newIORef B.empty
-   e <- liftIO $ newIORef False
+   b <- newIORef B.empty
+   e <- newIORef False
    return $ FromHandle h b e
 
+fetch :: InputSource -> IO (Maybe Workload)
+fetch (External m) = takeMVar m
 
-fetch :: MonadIO m => InputSource -> m (Maybe Workload)
-{-# INLINE fetch #-}
-fetch (External m) = liftIO $ takeMVar m
+openInputFile :: B.ByteString -> IO InputSource
+openInputFile f = fromHandle =<< openFile (B.unpack f) ReadMode
 
-
-openInputFile :: MonadIO m => B.ByteString -> m InputSource
-openInputFile f = do
-   h <- liftIO $ openFile (B.unpack f) ReadMode
-   fromHandle h
-
-nextLine :: MonadIO m => InputSource -> B.ByteString -> m (Maybe B.ByteString)
+nextLine :: InputSource -> B.ByteString -> IO (Maybe B.ByteString)
+{-# INLINE nextLine #-}
 nextLine (FromHandle h rb re) rs = readIter h
   where
    readIter h = do
-    thisBuf <- liftIO $ readIORef rb
-    eof     <- liftIO $ readIORef re
+    thisBuf <- readIORef rb
+    eof     <- readIORef re
     let nrs = B.length rs
     case B.breakSubstring rs thisBuf of
-      (l, rest) | B.null l && B.null rest && eof -> return Nothing
-                |             B.null rest && eof -> return (Just l)
+      (l, rest) | B.null l && B.null rest && eof -> return $! Nothing
+                |             B.null rest && eof -> return $! (Just l)
                 | B.null rest && not eof -> do
-                     nextChunk <- liftIO $ B.hGet h 8192
-                     liftIO $ do modifyIORef' rb (\tb -> B.append tb nextChunk)
-                                 writeIORef   re (B.null nextChunk) 
+                     nextChunk <- B.hGet h 8192
+                     modifyIORef' rb (\tb -> B.append tb nextChunk)
+                     writeIORef   re (B.null nextChunk) 
                      readIter h
-                | otherwise -> do liftIO $ writeIORef rb (B.drop nrs rest)
-                                  return (Just l)
+                | otherwise -> do writeIORef rb (B.drop nrs rest)
+                                  return $! (Just l)
 
 
-closeStream :: MonadIO m => InputSource -> m ()
+closeStream :: InputSource -> IO ()
 closeStream (External _)       = return ()
-closeStream (FromHandle h _ _) = liftIO $ hClose h
+closeStream (FromHandle h _ _) = hClose h
