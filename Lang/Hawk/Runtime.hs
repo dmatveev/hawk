@@ -2,7 +2,6 @@
 
 module Lang.Hawk.Runtime where
 
-import Control.Monad.Trans
 import Data.IORef
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
@@ -105,13 +104,13 @@ calcMatch   s r   = let (s', r') = (toString s, toString r)
                         (rS, rL) = (s' =~ r') :: (MatchOffset, MatchLength)
                     in (rS + 1, rL)
 
-calcSplit :: MonadIO m => Value -> Value -> IORef Array -> m Value
+calcSplit :: Value -> Value -> IORef Array -> IO Value
 calcSplit str fs arr = do
    let ss    = (toString str) `splitWithSep` (toString fs)
        is    = [1, 2..]
        keys  = map show [1, 2..]
        strs  = map valstr $ ss
-   liftIO $ writeIORef arr (M.fromList $ zip keys strs)
+   writeIORef arr (M.fromList $ zip keys strs)
    return $! VDouble $ fromIntegral $ length ss
 
 proxyFcn :: (Double -> Double) -> Value -> Value

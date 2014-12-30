@@ -21,12 +21,9 @@ import qualified Data.IntMap as IM
 import System.Random (StdGen, mkStdGen)
 import System.IO (Handle)
 import System.Process (ProcessHandle)
-import Lang.Hawk.AST (AwkSource)
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
-import Lang.Hawk.Analyzer
-import Lang.Hawk.Bytecode (OpCode)
-import Lang.Hawk.Bytecode.Compiler (compile)
+import Lang.Hawk.Bytecode (ProgCode, OpCode)
 import Lang.Hawk.Runtime (calcArith, splitIntoFields')
 import Lang.Hawk.Runtime.Input (Record, InputSource)
 
@@ -66,11 +63,9 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-emptyContext :: AwkSource -> InputSource -> IO HawkContext
-emptyContext s i = do
-  let (startup, opcodes, shutdown) = compile s
-  rt <- mkRewriteTable (analyze s)
-  return $ HawkContext
+emptyContext :: ProgCode -> InputSource -> IO HawkContext
+{-# INLINE emptyContext #-}
+emptyContext (startup, opcodes, shutdown) i = return $! HawkContext
            { hcInput    = i
            , hcWorkload = []
 
@@ -83,9 +78,9 @@ emptyContext s i = do
            , hcThisLine = ""
            , hcStdGen   = mkStdGen 0
 
-           , hcSTARTUP  = awkPrepare rt startup
-           , hcOPCODES  = awkPrepare rt opcodes
-           , hcSHUTDOWN = awkPrepare rt shutdown
+           , hcSTARTUP  = startup
+           , hcOPCODES  = opcodes
+           , hcSHUTDOWN = shutdown
 
            , hcKEYS     = []
            , hcKSTACK   = []

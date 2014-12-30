@@ -52,7 +52,7 @@ bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o)*:st
 bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top)*:st
 bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top)*:st
 bc st         (CALL f n) = {-# SCC "CALL"  #-} funcall st f n
-bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} calcSplit s fs a >>= \v -> return $ v*:st
+bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} liftIO (calcSplit s fs a) >>= \v -> return $ v*:st
 bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top*:st
 bc st         (PRN n)    = {-# SCC "PRN"   #-} let (vs,r) = splitAt n     st in (prn vs    >> return r)
 bc st         (FPRN n m) = {-# SCC "FPRN"  #-} let (vs,r) = splitAt (n+1) st in (fprn m vs >> return r)

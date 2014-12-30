@@ -11,7 +11,7 @@ import Lang.Hawk.Grammar (awk)
 import Lang.Hawk.Analyzer
 import Lang.Hawk.Scheduler
 import Lang.Hawk.Bytecode
-import Lang.Hawk.Bytecode.Compiler (compile)
+import Lang.Hawk.Bytecode.Compiler
 
 pcode :: [OpCode] -> IO ()
 pcode cc = forM_ (zip [0::Int,1..] cc) $ \(i,c) -> printf "%4d  %s\n" i (show c)
@@ -27,14 +27,16 @@ runHawk cfg = do
     (Left e)  -> putStrLn $ show e
     (Right a) -> do
       if awkDebug cfg
-      then do let (st,bc,fi) = compile a
+      then do let (st,bc,fi) = compileNoRefs a
               putStrLn ".BEGIN"   >> pcode st
               putStrLn ".ACTIONS" >> pcode bc
               putStrLn ".END"     >> pcode fi
-      else case awkFiles cfg of
-        []        -> run a stdin ""
-        (file:[]) -> bracket (openFile file ReadMode) hClose $ \h -> run a h file
-        _         -> putStrLn "Multiple inpit files are not supported yet"
+      else do
+           code <- compile a 
+           case awkFiles cfg of
+             []        -> run code stdin ""
+             (file:[]) -> bracket (openFile file ReadMode) hClose $ \h -> run code h file
+             _         -> putStrLn "Multiple inpit files are not supported yet"
 
 
 main :: IO ()

@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Lang.Hawk.Bytecode.Compiler (compile) where
+module Lang.Hawk.Bytecode.Compiler (compile, compileNoRefs) where
 
 import Data.Maybe (fromJust)
 import qualified Data.ByteString.Char8 as B
@@ -308,12 +308,18 @@ compileSection mp ms = do
                          op $ PUSH $ valstr (B.pack s)
                          op $ MATCH
 
-compile :: AwkSource -> ([OpCode], [OpCode], [OpCode])
-compile src = (cc begins, cc actions, cc ends)
+compileNoRefs :: AwkSource -> ([OpCode], [OpCode], [OpCode])
+compileNoRefs src = (cc begins, cc actions, cc ends)
   where cc s    = F.toList $ runCompiler (mapM compileTL s) csInitial
         begins  = filter isBegin src
         actions = procUnits src
         ends    = filter isEnd src
+
+compile :: AwkSource -> IO ([OpCode], [OpCode], [OpCode])
+compile src = do
+  let (startup, opcodes, shutdown) = compileNoRefs src
+  rt <- mkRewriteTable (analyze src)
+  return (awkPrepare rt startup, awkPrepare rt opcodes, awkPrepare rt shutdown)
 
 procUnits :: AwkSource -> AwkSource
 procUnits s = filter p s

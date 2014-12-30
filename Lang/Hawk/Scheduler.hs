@@ -9,11 +9,9 @@ import qualified Data.IntMap as IM
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
 
-import Lang.Hawk.Basic
-import Lang.Hawk.AST
 import Lang.Hawk.Interpreter
-import Lang.Hawk.Analyzer
 import Lang.Hawk.Value
+import Lang.Hawk.Bytecode
 import Lang.Hawk.Bytecode.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
@@ -90,10 +88,10 @@ reader = do
 runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
-worker :: AwkSource -> MVar (Maybe Workload) -> IO ()
-worker src mq = do
-    ctx <- emptyContext src $ External mq
-    runInterpreter wrkMain ctx >> return ()
+worker :: ProgCode -> MVar (Maybe Workload) -> IO ()
+worker code mq = do
+   ctx <- emptyContext code $ External mq
+   runInterpreter wrkMain ctx >> return ()
  where
    wrkMain = do
       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
@@ -131,11 +129,11 @@ worker src mq = do
           waitForProcess p
 
 
-run :: AwkSource -> Handle -> String -> IO ()
-run src h file = inThread $ do
+run :: ProgCode -> Handle -> String -> IO ()
+run code h file = inThread $ do
     q <- newEmptyMVar
     j <- newEmptyMVar
     forkIO $ runReaderThread reader h "\n" " " q >> return ()
-    forkFinally (worker src q) $ \_ -> putMVar j ()
+    forkFinally (worker code q) $ \_ -> putMVar j ()
     takeMVar j
     return ()
