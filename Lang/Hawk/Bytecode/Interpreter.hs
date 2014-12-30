@@ -75,7 +75,7 @@ bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return 
 bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
 bc (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline top    >>= \v -> return $ v*:st
 bc (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV r top >>= \v -> return $ v*:st 
-bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND ") >> return st
+bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND") >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
 {-# INLINE execBC' #-}

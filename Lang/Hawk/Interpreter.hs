@@ -16,17 +16,16 @@ module Lang.Hawk.Interpreter
 import qualified Data.ByteString.Char8 as B
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State.Strict
-import Control.Monad.Trans
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 import System.Random (StdGen, mkStdGen)
 import System.IO (Handle)
 import System.Process (ProcessHandle)
-import Lang.Hawk.AST
+import Lang.Hawk.AST (AwkSource)
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
 import Lang.Hawk.Analyzer
-import Lang.Hawk.Bytecode
+import Lang.Hawk.Bytecode (OpCode)
 import Lang.Hawk.Bytecode.Compiler (compile)
 import Lang.Hawk.Runtime (calcArith, splitIntoFields')
 import Lang.Hawk.Runtime.Input (Record, InputSource)
