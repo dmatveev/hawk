@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Lang.Hawk.Bytecode.Compiler where
+module Lang.Hawk.Bytecode.Compiler (compile) where
 
 import Data.Maybe (fromJust)
 import qualified Data.ByteString.Char8 as B

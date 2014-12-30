@@ -110,6 +110,7 @@ worker src mq = do
          (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
                         wrkProc >>= \cont -> when cont workerLoop
 
+   {-# INLINE wrkProc #-}
    wrkProc = do
       w <- gets hcWorkload
       case w of

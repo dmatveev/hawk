@@ -2,7 +2,7 @@
 
 module Lang.Hawk.Analyzer (Effects, analyze, awkPrepare, mkRewriteTable) where
 
-import Data.IORef
+import Data.IORef (IORef, newIORef)
 import Data.List (find)
 import Data.Maybe (isNothing)
 import Control.Applicative (Applicative, (<*>), (<$>), pure)

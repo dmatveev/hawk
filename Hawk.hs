@@ -10,7 +10,12 @@ import Lang.Hawk.Options
 import Lang.Hawk.Grammar (awk)
 import Lang.Hawk.Analyzer
 import Lang.Hawk.Scheduler
-import Lang.Hawk.Bytecode.Compiler
+import Lang.Hawk.Bytecode
+import Lang.Hawk.Bytecode.Compiler (compile)
+
+pcode :: [OpCode] -> IO ()
+pcode cc = forM_ (zip [0::Int,1..] cc) $ \(i,c) -> printf "%4d  %s\n" i (show c)
+       
 
 runHawk :: HawkConfig -> IO ()
 runHawk cfg = do
@@ -22,8 +27,10 @@ runHawk cfg = do
     (Left e)  -> putStrLn $ show e
     (Right a) -> do
       if awkDebug cfg
-      then do let bc = runCompiler (mapM_ compileTL a) csInitial
-              forM_ (zip [0::Int,1..] (toList bc)) $ \(i, c) -> printf "%4d  %s\n" i (show c)
+      then do let (st,bc,fi) = compile a
+              putStrLn ".BEGIN"   >> pcode st
+              putStrLn ".ACTIONS" >> pcode bc
+              putStrLn ".END"     >> pcode fi
       else case awkFiles cfg of
         []        -> run a stdin ""
         (file:[]) -> bracket (openFile file ReadMode) hClose $ \h -> run a h file
