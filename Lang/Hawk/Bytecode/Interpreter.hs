@@ -3,7 +3,6 @@ module Lang.Hawk.Bytecode.Interpreter (execBC', setupContext) where
 import GHC.IO.Exception (ExitCode(..))
 
 import Data.IORef
-import Data.Fixed (mod')
 import Control.Monad.State.Strict
 import qualified Data.Map as M
 import qualified Data.IntMap as IM
@@ -21,9 +20,8 @@ import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
 import Lang.Hawk.Runtime.Printf (sprintf)
 
-dbg :: [Value] -> OpCode -> Interpreter ()
-{-# INLINE dbg #-}
-dbg _ _  = return ()
+-- dbg :: [Value] -> OpCode -> Interpreter ()
+-- {-# INLINE dbg #-}
 -- dbg st op = do
 --    let opStr = show op
 --        opLen = length opStr
@@ -77,7 +75,7 @@ bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return 
 bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
 bc (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline top    >>= \v -> return $ v*:st
 bc (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV r top >>= \v -> return $ v*:st 
-bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND " ++ show op) >> return st
+bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND ") >> return st
 
 execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
 {-# INLINE execBC' #-}
@@ -85,12 +83,12 @@ execBC' src = execBC src [] src
 
 execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
 execBC src st         []             = return (True, st)
-execBC src st         (op@EX:_)      = {-# SCC "EX"    #-} dbg st op >> return (False, st)
-execBC src st         (op@NXT:_)     = {-# SCC "NXT"   #-} dbg st op >> return (True, st)
-execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"    #-} dbg s  op >> if toBool top then execBC src st r else jmp src n st
-execBC src s@(top:st) (op@(JT  n):r) = {-# SCC "JT"    #-} dbg s  op >> if toBool top then jmp src n st else execBC src st r
-execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP"   #-} dbg s  op >> jmp src n st
-execBC src st         (op:ops)       = {-# SCC "OP"    #-} dbg st op >> bc st op   >>= \st' -> execBC src st' ops
+execBC src st         (op@EX:_)      = {-# SCC "EX"  #-} return (False, st)
+execBC src st         (op@NXT:_)     = {-# SCC "NXT" #-} return (True, st)
+execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} if toBool top then execBC src st r else jmp src n st
+execBC src s@(top:st) (op@(JT  n):r) = {-# SCC "JT"  #-} if toBool top then jmp src n st else execBC src st r
+execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} jmp src n st
+execBC src st         (op:ops)       = {-# SCC "OP"  #-} bc st op   >>= \st' -> execBC src st' ops
 
 jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
@@ -130,6 +128,7 @@ fmatch s r = do
                     }
    return $! vBool (rS /= 0)
 
+{-# INLINE intFSub #-}
 intFSub f vr vs vl st = do
    let (r,s) = f vr vs vl
    return $ (valstr s):(VDouble $ fromIntegral r)*:st
@@ -235,6 +234,7 @@ intGetProcessHandle cmd = do
        return hin
  where cmd' = B.unpack cmd
 
+{-# INLINE toMode #-}
 toMode ModAppend  = AppendMode
 toMode ModRewrite = WriteMode
 
@@ -376,9 +376,11 @@ intPrintf (fmt:vs) = liftIO $ B.putStr $ sprintf (toString fmt) vs
 
 
 intSRand :: Interpreter ()
+{-# INLINE intSRand #-}
 intSRand = liftIO getStdGen >>= \g -> modify (\s -> s {hcStdGen = g})
 
 intSRand' :: Value -> Interpreter ()
+{-# INLINE intSRand' #-}
 intSRand' i = modify (\s -> s {hcStdGen = mkStdGen (toInt i)})
 
 evalRand :: Interpreter Value
