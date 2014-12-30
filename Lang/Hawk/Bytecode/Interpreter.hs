@@ -37,16 +37,16 @@ bc (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $ (calcArith l r o)*:st
 bc st         (PUSH v)   = {-# SCC "PUSH"  #-} return $ v*:st
 bc (top:st)   POP        = {-# SCC "POP"   #-} return $ st
 bc (top:st)   FIELD      = {-# SCC "FIELD" #-} fref top >>= \v -> return $ v*:st
-bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $ st)
+bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $ v*:st)
 bc (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField o   i v >> (return $ st)
 bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $ readIORef r) >>= \v -> return $ v*:st
-bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ st)
+bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ top*:st)
 bc (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $ st)
 bc st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef b >>= \v -> return $ v*:st
-bc (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar b (const top) >> (return $ st)
+bc (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar b (const top) >> (return $ top*:st)
 bc (top:st)   (BMOD o b) = {-# SCC "BMOD"  #-} modBVar b (\v -> calcArith v top o) >> (return $ st)
 bc (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $ v*:st
-bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ st) -- TODO: previously, value was pushed on stack
+bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ v*:st) -- TODO: previously, value was pushed on stack
 bc (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $ v*:st
 bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o)*:st
 bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top)*:st
@@ -67,7 +67,7 @@ bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $ (
 bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
                                                                    , hcKSTACK = tail (hcKSTACK s) }
                                                   return $ st
-bc st         DRP        = {-# SCC "DRP"   #-} return $ []
+bc st         DRP        = {-# SCC "DRP"   #-} return $! []
 bc (rv:lv:st) CAT        = {-# SCC "CAT"   #-} return $ (vConcat lv rv)*:st
 bc st         GETL       = {-# SCC "GETL"  #-} getline         >>= \v -> return $ v*:st
 bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return $ v*:st
