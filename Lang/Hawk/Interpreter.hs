@@ -15,7 +15,8 @@ module Lang.Hawk.Interpreter
 
 import qualified Data.ByteString.Char8 as B
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Monad.State.Strict
+import Control.Monad (liftM)
+import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 import System.Random (StdGen, mkStdGen)
@@ -101,12 +102,10 @@ emptyContext (startup, opcodes, shutdown) i = return $! HawkContext
            , hcSUBSEP   = defstr  "\034"
            }
 
-newtype Interpreter a = Interpreter (StateT HawkContext IO a)
-                        deriving (Monad, MonadIO, MonadState HawkContext,
-                                  Applicative, Functor)
+type Interpreter a = StateT HawkContext IO a
 
 runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
-runInterpreter (Interpreter stt) c = execStateT stt c
+runInterpreter stt c = execStateT stt c
 
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m

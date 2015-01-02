@@ -7,7 +7,9 @@ import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Monad.State.Strict
+import Control.Monad (liftM, forM_, when)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.State.Strict
 
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Value
@@ -43,9 +45,7 @@ data ReaderState = ReaderState
                  , rTmp :: ![Record]
                  }
 
-newtype ReaderThread a = ReaderThread (StateT ReaderState IO a)
-                         deriving (Monad, MonadIO, MonadState ReaderState,
-                                   Applicative, Functor)
+type ReaderThread a = StateT ReaderState IO a
 
 sendWorkload :: ReaderThread ()
 sendWorkload = do
@@ -85,7 +85,7 @@ reader = do
         (Just l) -> enqueue l >> readLoop is rs
         Nothing  -> return ()
 
-runReaderThread (ReaderThread st) h rs fs q = execStateT st c where
+runReaderThread st h rs fs q = execStateT st c where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
 worker :: ProgCode -> MVar (Maybe Workload) -> IO ()

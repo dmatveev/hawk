@@ -1,7 +1,7 @@
 module Lang.Hawk.Runtime.Printf (sprintf) where
 
 import Control.Applicative ((<$>))
-import Control.Monad.Writer
+import Control.Monad.Trans.Writer
 import Data.Maybe (maybe)
 import Data.Char (chr, intToDigit)
 import GHC.Float (floatToDigits)

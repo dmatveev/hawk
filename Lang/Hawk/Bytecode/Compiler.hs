@@ -8,7 +8,8 @@ import qualified Data.Sequence as D
 import qualified Data.Foldable as F (toList)
 import Data.Sequence ((|>))
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Monad.State.Strict
+import Control.Monad (forM_, liftM, replicateM_)
+import Control.Monad.Trans.State.Strict
 
 import Lang.Hawk.Basic
 import Lang.Hawk.AST
@@ -35,11 +36,11 @@ data LoopState = LoopState
 initialLoopState :: Int -> LoopState
 initialLoopState enter = LoopState enter [] [] [] 
 
-newtype Compiler a = Compiler (State CompilerState a)
-                   deriving (Monad, MonadState CompilerState, Applicative, Functor)
+type Compiler a = State CompilerState a
 
 runCompiler :: Compiler a -> CompilerState -> D.Seq OpCode
-runCompiler (Compiler c) b = csBC $ execState c b
+--runCompiler (Compiler c) b = csBC $ execState c b
+runCompiler c b = csBC $ execState c b
 
 loop :: Compiler () -> Compiler ()
 loop body = do

@@ -6,8 +6,9 @@ import Data.IORef (IORef, newIORef)
 import Data.List (find)
 import Data.Maybe (isNothing)
 import Control.Applicative (Applicative, (<*>), (<$>), pure)
-import Control.Monad.Reader
-import Control.Monad.State.Strict
+import Control.Monad (liftM)
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -82,11 +83,11 @@ emptyEffects = Effects
              , eFlow     = False
              }
 
-newtype Tracer a = Tracer (State Effects a)
-                   deriving (Monad, MonadState Effects, Applicative, Functor)
+type Tracer a = State Effects a
 
 runTracer :: Tracer a -> Effects -> Effects
-runTracer (Tracer s) e = execState s e
+--runTracer (Tracer s) e = execState s e
+runTracer s e = execState s e
 
 mtry :: (Monad m) => (a -> m b) -> Maybe a -> m ()
 mtry _ Nothing  = return ()
@@ -237,11 +238,11 @@ mkRewriteTable efs =
     <*> (liftM M.fromList $ mapM (mkRef $ M.empty)   (S.toList $ eArrays efs))
  where mkRef a s = (s,) <$> newIORef a
 
-newtype Rewrite a = Rewrite (Reader RewriteTable a)
-                   deriving (Monad, MonadReader RewriteTable, Applicative, Functor)
+type Rewrite a = Reader RewriteTable a
 
 runRewrite :: Rewrite a -> RewriteTable -> a
-runRewrite (Rewrite r) t = runReader r t
+--runRewrite (Rewrite r) t = runReader r t
+runRewrite r t = runReader r t
 
 var s = asks ((M.! s) . rtVars)
 arr s = asks ((M.! s) . rtArrs)

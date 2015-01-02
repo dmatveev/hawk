@@ -46,17 +46,16 @@ hawkProg = (HawkString <$> argument str
               <> help "AWK program source file"))
 
 hawkVars :: Parser [HawkVar]
-hawkVars = many $ nullOption
+hawkVars = many $ option (str >>= varReader)
             (short 'v'
-             <> reader varReader
              <> metavar "var=value"
              <> help "Set AWK variable 'var' to 'value'")
 
 
 hawkInput :: Parser [String]
-hawkInput = arguments str
+hawkInput = some (argument str
             ( metavar "file ..."
-            <> help "Input file(s) to process")
+            <> help "Input file(s) to process"))
 
 hawkDbg :: Parser Bool
 hawkDbg = switch

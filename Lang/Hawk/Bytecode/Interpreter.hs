@@ -3,7 +3,9 @@ module Lang.Hawk.Bytecode.Interpreter (execBC', setupContext) where
 import GHC.IO.Exception (ExitCode(..))
 
 import Data.IORef
-import Control.Monad.State.Strict
+import Control.Monad (liftM)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.State.Strict
 import qualified Data.Map as M
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Char8 as B
