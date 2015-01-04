@@ -86,7 +86,6 @@ emptyEffects = Effects
 type Tracer a = State Effects a
 
 runTracer :: Tracer a -> Effects -> Effects
---runTracer (Tracer s) e = execState s e
 runTracer s e = execState s e
 
 mtry :: (Monad m) => (a -> m b) -> Maybe a -> m ()
@@ -241,7 +240,6 @@ mkRewriteTable efs =
 type Rewrite a = Reader RewriteTable a
 
 runRewrite :: Rewrite a -> RewriteTable -> a
---runRewrite (Rewrite r) t = runReader r t
 runRewrite r t = runReader r t
 
 var s = asks ((M.! s) . rtVars)

@@ -39,7 +39,6 @@ initialLoopState enter = LoopState enter [] [] []
 type Compiler a = State CompilerState a
 
 runCompiler :: Compiler a -> CompilerState -> D.Seq OpCode
---runCompiler (Compiler c) b = csBC $ execState c b
 runCompiler c b = csBC $ execState c b
 
 loop :: Compiler () -> Compiler ()
