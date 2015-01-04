@@ -53,7 +53,7 @@ hawkVars = many $ option (str >>= varReader)
 
 
 hawkInput :: Parser [String]
-hawkInput = some (argument str
+hawkInput = many (argument str
             ( metavar "file ..."
             <> help "Input file(s) to process"))
 
