@@ -7,7 +7,6 @@ import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Exception (throw)
 import Control.Monad (liftM, forM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State.Strict
@@ -150,20 +149,13 @@ executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
   ctxAfterProc <-
       if cont
-      then do let rs      = toString . hcRS $ ctxAfterStartup
-                  fs      = toString . hcFS $ ctxAfterStartup
-                  ctxProc = ctxAfterStartup { hcOPCODES = actions }
+      then do let rs = toString . hcRS $ ctxAfterStartup
+                  fs = toString . hcFS $ ctxAfterStartup
               forkIO $ runReaderThread reader h rs fs q
-              forkFinally (interpreterThread ctxProc) $ \ex -> putMVar j ex
-              ex <- takeMVar j
-              case ex of
-                (Left e)  -> throw e
-                (Right c) -> return c
+              liftM snd $ runInterpreter wrkLoop $ ctxAfterStartup { hcOPCODES = actions }
       else return ctxAfterStartup
   runInterpreter wrkFinish $ ctxAfterProc { hcOPCODES = finalize }
   return ()
- where
-  interpreterThread ctx = liftM snd $ runInterpreter wrkLoop ctx
-
+ 
 executeFullAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeFullAsync = undefined
