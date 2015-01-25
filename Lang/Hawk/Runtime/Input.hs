@@ -40,7 +40,8 @@ nextLine (FromHandle h rb re) rs = readIter h
     let nrs = B.length rs
     case B.breakSubstring rs thisBuf of
       (l, rest) | B.null l && B.null rest && eof -> return $! Nothing
-                |             B.null rest && eof -> return $! (Just l)
+                |             B.null rest && eof -> do writeIORef rb B.empty
+                                                       return $! (Just l)
                 | B.null rest && not eof -> do
                      nextChunk <- B.hGet h 8192
                      modifyIORef' rb (\tb -> B.append tb nextChunk)

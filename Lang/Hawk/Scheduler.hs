@@ -7,6 +7,7 @@ import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
+import Control.Exception (throw)
 import Control.Monad (liftM, forM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State.Strict
@@ -133,8 +134,8 @@ runReaderThread st h rs fs q = execStateT st c >> return () where
 run :: CompiledSource -> Handle -> String -> IO ()
 run (CompiledSource startup actions finalize) h file = inThread $
     let f = case actions of
-             (CompiledSync _)         -> executeSync
-             (CompiledIOAsync _)       -> executeIOAsync
+             (CompiledSync      _)     -> executeSync
+             (CompiledIOAsync   _)     -> executeIOAsync
              (CompiledFullAsync _ _ _) -> executeFullAsync
     in f startup actions finalize h file
    
@@ -145,19 +146,24 @@ executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String ->
 executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   q <- newEmptyMVar
   j <- newEmptyMVar
-  forkIO $ runReaderThread reader h "\n" " " q
-  forkFinally (interpreterThread q) $ \_ -> putMVar j ()
-  takeMVar j
+  ctxStartup <- emptyContext startup $ External q
+  (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
+  ctxAfterProc <-
+      if cont
+      then do let rs      = toString . hcRS $ ctxAfterStartup
+                  fs      = toString . hcFS $ ctxAfterStartup
+                  ctxProc = ctxAfterStartup { hcOPCODES = actions }
+              forkIO $ runReaderThread reader h rs fs q
+              forkFinally (interpreterThread ctxProc) $ \ex -> putMVar j ex
+              ex <- takeMVar j
+              case ex of
+                (Left e)  -> throw e
+                (Right c) -> return c
+      else return ctxAfterStartup
+  runInterpreter wrkFinish $ ctxAfterProc { hcOPCODES = finalize }
+  return ()
  where
-  interpreterThread q = do
-    ctxStartup <- emptyContext startup $ External q
-    (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
-    let ctxProc = ctxAfterStartup { hcOPCODES = actions }
-    ctxAfterProc <- if cont
-                    then liftM snd $ runInterpreter wrkLoop ctxProc
-                    else return ctxAfterStartup
-    let ctxFinish = ctxAfterProc { hcOPCODES = finalize }
-    runInterpreter wrkFinish ctxAfterProc
-  
+  interpreterThread ctx = liftM snd $ runInterpreter wrkLoop ctx
+
 executeFullAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeFullAsync = undefined
