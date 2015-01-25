@@ -1,6 +1,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Lang.Hawk.Bytecode.Compiler (compile, compileNoRefs) where
+module Lang.Hawk.Bytecode.Compiler (compile
+                                   , compileNoRefs
+                                   , CompiledSource(..)
+                                   , CompiledActions(..))
+       where
 
 import Data.Maybe (fromJust)
 import qualified Data.ByteString.Char8 as B
@@ -8,7 +12,7 @@ import qualified Data.Sequence as D
 import qualified Data.Foldable as F (toList)
 import Data.Sequence ((|>))
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Monad (forM_, liftM, replicateM_)
+import Control.Monad (forM_, liftM, replicateM, replicateM_)
 import Control.Monad.Trans.State.Strict
 
 import Lang.Hawk.Basic
@@ -16,6 +20,12 @@ import Lang.Hawk.AST
 import Lang.Hawk.Bytecode
 import Lang.Hawk.Value
 import Lang.Hawk.Analyzer
+
+data CompiledSource = CompiledSource [OpCode] CompiledActions [OpCode]
+
+data CompiledActions = CompiledSync [OpCode]
+                     | CompiledIOAsync [OpCode]
+                     | CompiledFullAsync RewriteTable [RewriteTable] [[OpCode]]
 
 data CompilerState = CompilerState
                      { csBC  :: (D.Seq OpCode)
@@ -315,11 +325,28 @@ compileNoRefs src = (cc begins, cc actions, cc ends)
         actions = procUnits src
         ends    = filter isEnd src
 
-compile :: AwkSource -> IO ([OpCode], [OpCode], [OpCode])
-compile src = do
-  let (startup, opcodes, shutdown) = compileNoRefs src
-  rt <- mkRewriteTable (analyze src)
-  return (awkPrepare rt startup, awkPrepare rt opcodes, awkPrepare rt shutdown)
+compile :: AwkSource -> Int -> IO CompiledSource
+compile src threads = do
+  let opcodes      = compileNoRefs src
+      (effs, plan) = analyze src
+  case plan of
+    Parallel     -> compileParallel opcodes effs
+    ParallelIO   -> compileSync     opcodes effs CompiledIOAsync
+    Synchronized -> compileSync     opcodes effs CompiledSync
+ where
+  compileParallel (startup, actions, shutdown) effects = do
+    (rt:rts) <- replicateM (threads + 1) $ mkRewriteTable effects
+    let opst = awkPrepare rt startup
+        opac = map (\r -> awkPrepare r actions) rts
+        opfi = awkPrepare rt shutdown
+    return $ CompiledSource opst (CompiledFullAsync rt rts opac) opfi
+
+  compileSync (startup, actions, shutdown) effects ctor = do
+    rt <- mkRewriteTable effects
+    let opst = awkPrepare rt startup
+        opac = awkPrepare rt actions
+        opfi = awkPrepare rt shutdown
+    return $ CompiledSource opst (ctor opac) opfi 
 
 procUnits :: AwkSource -> AwkSource
 procUnits s = filter p s

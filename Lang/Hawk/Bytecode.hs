@@ -48,7 +48,5 @@ data OpCode = ARITH !ArithOp
             | PGETLV !(IORef Value) | PGETLV' !String
             deriving (Show)
 
-type ProgCode = ([OpCode],[OpCode],[OpCode])
-
 instance Show (IORef a) where
    show _ = "<ioref>"

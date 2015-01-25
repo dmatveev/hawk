@@ -1,9 +1,13 @@
-module Lang.Hawk.Bytecode.Interpreter (execBC', setupContext) where
+module Lang.Hawk.Bytecode.Interpreter
+       ( wrkInit
+       , wrkLoop
+       , wrkFinish
+       ) where
 
 import GHC.IO.Exception (ExitCode(..))
 
 import Data.IORef
-import Control.Monad (liftM)
+import Control.Monad (forM_, liftM, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State.Strict
 import qualified Data.Map as M
@@ -391,3 +395,43 @@ evalRand = do
      let (r, g') = randomR (0.0, 1.0) g
      modify $ (\s -> s { hcStdGen = g' })
      return $! VDouble r
+
+-- q <- newEmptyMVar
+-- j <- newEmptyMVar
+-- forkIO $ runReaderThread reader h "\n" " " q >> return ()
+-- forkFinally (worker code q) $ \_ -> putMVar j ()
+-- takeMVar j
+-- return ()
+
+wrkInit :: Interpreter Bool
+wrkInit = liftM fst $ gets hcOPCODES >>= execBC'
+
+wrkLoop :: Interpreter ()        
+wrkLoop = do
+   q <- (gets hcInput >>= liftIO . fetch)
+   case q of
+      Nothing  -> return ()
+      (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
+                     wrkProc >>= \cont -> when cont wrkLoop
+
+{-# INLINE wrkProc #-}
+wrkProc :: Interpreter Bool
+wrkProc = do
+   w <- gets hcWorkload
+   case w of
+     [] -> return True
+     (r:rs) -> do
+        setupContext r rs
+        (cont, _) <- (gets hcOPCODES >>= execBC')
+        if cont then wrkProc else return False 
+
+wrkFinish :: Interpreter ()
+wrkFinish = do
+   gets hcOPCODES   >>= execBC'
+   gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+   gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+       hClose h
+       waitForProcess p
+   gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
+       closeStream is
+       waitForProcess p

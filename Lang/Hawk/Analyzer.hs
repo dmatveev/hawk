@@ -1,12 +1,15 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
 
-module Lang.Hawk.Analyzer (Effects, analyze, awkPrepare, mkRewriteTable) where
+module Lang.Hawk.Analyzer (Effects,
+                           RewriteTable,
+                           ExecutionPolicy(..),
+                           analyze, awkPrepare, mkRewriteTable) where
 
 import Data.IORef (IORef, newIORef)
 import Data.List (find)
 import Data.Maybe (isNothing)
 import Control.Applicative (Applicative, (<*>), (<$>), pure)
-import Control.Monad (liftM)
+import Control.Monad (liftM, when)
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as M
@@ -56,6 +59,11 @@ import Lang.Hawk.Bytecode
 --
 -- Fields are initially LOCAL. If any of the fields is assigned to a GLOBAL value,
 -- *all* fields become GLOBAL.
+--
+-- TODO: 
+-- /foo/ { foo = $1 }
+-- /bar/ { bar = $2 }
+-- END   { print foo, bar}
 
 data Tag = UNDEF | LOCAL | GLOBAL
          deriving (Eq, Show)
@@ -67,9 +75,14 @@ data Effects = Effects
              , eArrays   :: S.Set String
              , eFunCalls :: Bool
              , eRanges   :: Bool
-             , eDepth    :: Int
              , eFlow     :: Bool
+             , eDepth    :: Int
+             , eAct      :: Bool
              } deriving (Show)
+
+data ExecutionPolicy = Synchronized
+                     | ParallelIO
+                     | Parallel
 
 emptyEffects :: Effects
 emptyEffects = Effects
@@ -79,8 +92,9 @@ emptyEffects = Effects
              , eArrays   = S.empty
              , eFunCalls = False
              , eRanges   = False
-             , eDepth    = 0
              , eFlow     = False
+             , eDepth    = 0
+             , eAct      = True
              }
 
 type Tracer a = State Effects a
@@ -129,9 +143,11 @@ trBlock f = do current <- gets eDepth
 
 trAsgn Set (VariableRef s) rhs = traceE rhs >>= updVarTag s
 trAsgn _   (VariableRef s) rhs = cmb' (varTag s) (traceE rhs) >>= updVarTag s
-trAsgn _   (BuiltInVar  b) rhs = updBVarTag b GLOBAL
+trAsgn _   (BuiltInVar  b) rhs = inAction $ updBVarTag b GLOBAL
 trAsgn _   (FieldRef _)    rhs = cmb' (gets eFields) (traceE rhs) >>= updFields 
 trAsgn _   (ArrayRef s _)  rhs = updArr s 
+
+inAction f = gets eAct >>= \inAct -> if inAct then f else return LOCAL
 
 trMod (VariableRef s) = varTag s >>= \t -> if t == UNDEF then updVarTag s GLOBAL else return t
 trMod (FieldRef i)    = gets eFields
@@ -202,15 +218,28 @@ traceP (RANGE _ _)            = updRange >> return ()
 traceP _                      =             return ()
 
 traceTL :: TopLevel -> Tracer ()
-traceTL (Section mp ms)       = mtry traceP mp >> mtry traceS ms
+traceTL (Section mp ms)       = do let inAct = case mp of
+                                        (Just BEGIN) -> False
+                                        (Just END)   -> False
+                                        otherwise    -> True
+                                   modify $ \s -> s { eAct = inAct } 
+                                   mtry traceP mp >> mtry traceS ms
+                                   modify $ \s -> s { eAct = True }
 traceTL _                     = return ()
 
-analyze :: AwkSource -> Effects
-analyze ts = runTracer (mapM_ traceTL ts) emptyEffects
+analyze :: AwkSource -> (Effects, ExecutionPolicy)
+analyze ts = (efs, awkPlan efs)
+  where efs = runTracer (mapM_ traceTL ts) emptyEffects
 
-awkPure :: AwkSource -> Bool
-awkPure s =  noGlobalVars && noBVarsModified && noArrays
-          && noFunCalls   && noRangePatterns && noControlFlow
+awkPlan :: Effects -> ExecutionPolicy
+awkPlan efs 
+    |    noGlobalVars && noBVarsModified && noArrays
+      && noFunCalls   && noRangePatterns && noControlFlow
+      = Parallel
+    | noBVarsModified
+      = ParallelIO
+    | otherwise
+      = Synchronized
    where 
      noGlobalVars    = isNothing $ find ((== GLOBAL) . snd) $ M.toList $ eVars  efs 
      noBVarsModified = all              ((== LOCAL)  . snd) $ M.toList $ eBVars efs
@@ -219,12 +248,9 @@ awkPure s =  noGlobalVars && noBVarsModified && noArrays
      noRangePatterns = not    $ eRanges   efs
      noControlFlow   = not    $ eFlow     efs
 
-     efs = analyze s
-
 awkPrepare :: RewriteTable -> [OpCode] -> [OpCode]
 awkPrepare t ops = runRewrite (mapM putRefsOp ops) t
 
--- TODO: Integrate into Parser (AFAIR Parsec allows it)
 data RewriteTable = RewriteTable
                     { rtVars :: M.Map String (IORef Value)
                     , rtArrs :: M.Map String (IORef Array)
@@ -246,19 +272,19 @@ var s = asks ((M.! s) . rtVars)
 arr s = asks ((M.! s) . rtArrs)
 
 putRefsOp :: OpCode -> Rewrite OpCode
-putRefsOp (VAR'    s) = VAR   <$> var s
-putRefsOp (VSET'   s) = VSET  <$> var s
-putRefsOp (VMOD' m s) = VMOD  <$> pure m <*> var s
-putRefsOp (ARR'    s) = ARR   <$> arr s
-putRefsOp (ASET'   s) = ASET  <$> arr s
-putRefsOp (AMOD' m s) = AMOD  <$> pure m <*> arr s
-putRefsOp (ANXT'   s) = ANXT  <$> var s
-putRefsOp (FETCH'  s) = FETCH <$> arr s 
-putRefsOp (IN'     s) = IN    <$> arr s
-putRefsOp (ADEL'   s) = ADEL  <$> arr s
-putRefsOp (ADRP'   s) = ADRP  <$> arr s
-putRefsOp (SPLIT'  s) = SPLIT <$> arr s
-putRefsOp (GETLV'  s) = GETLV <$> var s
+putRefsOp (VAR'    s) = VAR    <$> var s
+putRefsOp (VSET'   s) = VSET   <$> var s
+putRefsOp (VMOD' m s) = VMOD   <$> pure m <*> var s
+putRefsOp (ARR'    s) = ARR    <$> arr s
+putRefsOp (ASET'   s) = ASET   <$> arr s
+putRefsOp (AMOD' m s) = AMOD   <$> pure m <*> arr s
+putRefsOp (ANXT'   s) = ANXT   <$> var s
+putRefsOp (FETCH'  s) = FETCH  <$> arr s 
+putRefsOp (IN'     s) = IN     <$> arr s
+putRefsOp (ADEL'   s) = ADEL   <$> arr s
+putRefsOp (ADRP'   s) = ADRP   <$> arr s
+putRefsOp (SPLIT'  s) = SPLIT  <$> arr s
+putRefsOp (GETLV'  s) = GETLV  <$> var s
 putRefsOp (FGETLV' s) = FGETLV <$> var s
 putRefsOp (PGETLV' s) = PGETLV <$> var s
 putRefsOp op          = return (seq op op)

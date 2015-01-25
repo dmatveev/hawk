@@ -24,7 +24,7 @@ import System.IO (Handle)
 import System.Process (ProcessHandle)
 import Lang.Hawk.Basic
 import Lang.Hawk.Value
-import Lang.Hawk.Bytecode (ProgCode, OpCode)
+import Lang.Hawk.Bytecode (OpCode)
 import Lang.Hawk.Runtime (calcArith, splitIntoFields')
 import Lang.Hawk.Runtime.Input (Record, InputSource)
 
@@ -41,8 +41,6 @@ data HawkContext = HawkContext
                  , hcThisLine :: !B.ByteString
                  , hcStdGen   :: StdGen
 
-                 , hcSTARTUP  :: [OpCode]
-                 , hcSHUTDOWN :: [OpCode]
                  , hcOPCODES  :: [OpCode]
 
                  , hcKEYS     :: ![String]
@@ -64,9 +62,9 @@ data HawkContext = HawkContext
                  , hcSUBSEP   :: !Value
                  }
 
-emptyContext :: ProgCode -> InputSource -> IO HawkContext
+emptyContext :: [OpCode] -> InputSource -> IO HawkContext
 {-# INLINE emptyContext #-}
-emptyContext (startup, opcodes, shutdown) i = return $! HawkContext
+emptyContext opcodes i = return $! HawkContext
            { hcInput    = i
            , hcWorkload = []
 
@@ -79,9 +77,7 @@ emptyContext (startup, opcodes, shutdown) i = return $! HawkContext
            , hcThisLine = ""
            , hcStdGen   = mkStdGen 0
 
-           , hcSTARTUP  = startup
            , hcOPCODES  = opcodes
-           , hcSHUTDOWN = shutdown
 
            , hcKEYS     = []
            , hcKSTACK   = []
@@ -104,8 +100,8 @@ emptyContext (startup, opcodes, shutdown) i = return $! HawkContext
 
 type Interpreter a = StateT HawkContext IO a
 
-runInterpreter :: Interpreter a -> HawkContext -> IO HawkContext
-runInterpreter stt c = execStateT stt c
+runInterpreter :: Interpreter a -> HawkContext -> IO (a, HawkContext)
+runInterpreter stt c = runStateT stt c
 
 (*!) :: Ord k => M.Map k Value -> k -> Value
 m *! k = M.findWithDefault (VDouble 0) k m

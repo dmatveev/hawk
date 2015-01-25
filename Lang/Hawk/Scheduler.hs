@@ -14,6 +14,7 @@ import Control.Monad.Trans.State.Strict
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Value
 import Lang.Hawk.Bytecode
+import Lang.Hawk.Bytecode.Compiler
 import Lang.Hawk.Bytecode.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
@@ -85,55 +86,78 @@ reader = do
         (Just l) -> enqueue l >> readLoop is rs
         Nothing  -> return ()
 
-runReaderThread st h rs fs q = execStateT st c where
+runReaderThread st h rs fs q = execStateT st c >> return () where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
-worker :: ProgCode -> MVar (Maybe Workload) -> IO ()
-worker code mq = do
-   ctx <- emptyContext code $ External mq
-   runInterpreter wrkMain ctx >> return ()
+-- worker :: CompiledSource -> MVar (Maybe Workload) -> IO ()
+-- worker code mq = do
+--    ctx <- emptyContext code $ External mq
+--    runInterpreter wrkMain ctx >> return ()
+--  where
+--    wrkMain = do
+--       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
+--       modify $ \s -> s { hcFNR = VDouble 0 }
+--       cont <- wrkInit
+--       when cont $  workerLoop >> wrkFinish
+
+--    wrkInit = liftM fst $ gets hcSTARTUP >>= execBC'
+
+--    workerLoop = do
+--       q <- (gets hcInput >>= liftIO . fetch)
+--       case q of
+--          Nothing  -> return ()
+--          (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
+--                         wrkProc >>= \cont -> when cont workerLoop
+
+--    {-# INLINE wrkProc #-}
+--    wrkProc = do
+--       w <- gets hcWorkload
+--       case w of
+--         [] -> return True
+--         (r:rs) -> do
+--            setupContext r rs
+--            (cont, _) <- (gets hcOPCODES >>= execBC')
+--            if cont then wrkProc else return False 
+
+--    wrkFinish = do
+--       gets hcSHUTDOWN  >>= execBC'
+--       gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+--       gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+--           hClose h
+--           waitForProcess p
+--       gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
+--           closeStream is
+--           waitForProcess p
+
+
+run :: CompiledSource -> Handle -> String -> IO ()
+run (CompiledSource startup actions finalize) h file = inThread $
+    let f = case actions of
+             (CompiledSync _)         -> executeSync
+             (CompiledIOAsync _)       -> executeIOAsync
+             (CompiledFullAsync _ _ _) -> executeFullAsync
+    in f startup actions finalize h file
+   
+executeSync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
+executeSync = undefined
+
+executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
+executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
+  q <- newEmptyMVar
+  j <- newEmptyMVar
+  forkIO $ runReaderThread reader h "\n" " " q
+  forkFinally (interpreterThread q) $ \_ -> putMVar j ()
+  takeMVar j
  where
-   wrkMain = do
-      -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
-      modify $ \s -> s { hcFNR = VDouble 0 }
-      cont <- wrkInit
-      when cont $  workerLoop >> wrkFinish
-
-   wrkInit = liftM fst $ gets hcSTARTUP >>= execBC'
-
-   workerLoop = do
-      q <- (gets hcInput >>= liftIO . fetch)
-      case q of
-         Nothing  -> return ()
-         (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
-                        wrkProc >>= \cont -> when cont workerLoop
-
-   {-# INLINE wrkProc #-}
-   wrkProc = do
-      w <- gets hcWorkload
-      case w of
-        [] -> return True
-        (r:rs) -> do
-           setupContext r rs
-           (cont, _) <- (gets hcOPCODES >>= execBC')
-           if cont then wrkProc else return False 
-
-   wrkFinish = do
-      gets hcSHUTDOWN  >>= execBC'
-      gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
-      gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
-          hClose h
-          waitForProcess p
-      gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
-          closeStream is
-          waitForProcess p
-
-
-run :: ProgCode -> Handle -> String -> IO ()
-run code h file = inThread $ do
-    q <- newEmptyMVar
-    j <- newEmptyMVar
-    forkIO $ runReaderThread reader h "\n" " " q >> return ()
-    forkFinally (worker code q) $ \_ -> putMVar j ()
-    takeMVar j
-    return ()
+  interpreterThread q = do
+    ctxStartup <- emptyContext startup $ External q
+    (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
+    let ctxProc = ctxAfterStartup { hcOPCODES = actions }
+    ctxAfterProc <- if cont
+                    then liftM snd $ runInterpreter wrkLoop ctxProc
+                    else return ctxAfterStartup
+    let ctxFinish = ctxAfterProc { hcOPCODES = finalize }
+    runInterpreter wrkFinish ctxAfterProc
+  
+executeFullAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
+executeFullAsync = undefined

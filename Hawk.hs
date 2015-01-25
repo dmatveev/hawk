@@ -32,7 +32,7 @@ runHawk cfg = do
               putStrLn ".ACTIONS" >> pcode bc
               putStrLn ".END"     >> pcode fi
       else do
-           code <- compile a 
+           code <- compile a 4 -- TODO: Magic number - the number of cores
            case awkFiles cfg of
              []        -> run code stdin ""
              (file:[]) -> bracket (openFile file ReadMode) hClose $ \h -> run code h file
