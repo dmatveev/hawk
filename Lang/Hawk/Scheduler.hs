@@ -89,47 +89,6 @@ reader = do
 runReaderThread st h rs fs q = execStateT st c >> return () where
    c = ReaderState { rNR = 0, rWID = 0, rH = h, rRS = rs, rFS = fs, rQ = q, rTmp = [] }
 
--- worker :: CompiledSource -> MVar (Maybe Workload) -> IO ()
--- worker code mq = do
---    ctx <- emptyContext code $ External mq
---    runInterpreter wrkMain ctx >> return ()
---  where
---    wrkMain = do
---       -- assignToBVar ModSet FILENAME (valstr $ B.pack inputFile)
---       modify $ \s -> s { hcFNR = VDouble 0 }
---       cont <- wrkInit
---       when cont $  workerLoop >> wrkFinish
-
---    wrkInit = liftM fst $ gets hcSTARTUP >>= execBC'
-
---    workerLoop = do
---       q <- (gets hcInput >>= liftIO . fetch)
---       case q of
---          Nothing  -> return ()
---          (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
---                         wrkProc >>= \cont -> when cont workerLoop
-
---    {-# INLINE wrkProc #-}
---    wrkProc = do
---       w <- gets hcWorkload
---       case w of
---         [] -> return True
---         (r:rs) -> do
---            setupContext r rs
---            (cont, _) <- (gets hcOPCODES >>= execBC')
---            if cont then wrkProc else return False 
-
---    wrkFinish = do
---       gets hcSHUTDOWN  >>= execBC'
---       gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
---       gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
---           hClose h
---           waitForProcess p
---       gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
---           closeStream is
---           waitForProcess p
-
-
 run :: CompiledSource -> Handle -> String -> IO ()
 run (CompiledSource startup actions finalize) h file = inThread $
     let f = case actions of
@@ -139,7 +98,25 @@ run (CompiledSource startup actions finalize) h file = inThread $
     in f startup actions finalize h file
    
 executeSync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
-executeSync = undefined
+executeSync startup (CompiledSync actions) finalize h file = do
+  ctxStartup <- (fromHandle h) >>= emptyContext startup
+  (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
+  ctxAfterProc <-
+     if cont
+     then liftM snd $ runInterpreter syncLoop $ ctxAfterStartup { hcOPCODES = actions }
+     else return ctxAfterStartup
+  runInterpreter wrkFinish $ ctxAfterProc { hcOPCODES = finalize }
+  return ()
+ where
+  syncLoop = do
+   is <- gets hcInput
+   rs <- liftM toString $ gets hcRS
+   ml <- liftIO $ nextLine is rs
+   case ml of
+     Nothing  -> return ()
+     (Just l) -> do
+        cont <- wrkProcessLine l
+        if cont then syncLoop else return ()
 
 executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeIOAsync startup (CompiledIOAsync actions) finalize h file = do

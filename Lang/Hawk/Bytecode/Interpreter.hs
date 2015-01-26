@@ -1,6 +1,7 @@
 module Lang.Hawk.Bytecode.Interpreter
        ( wrkInit
        , wrkLoop
+       , wrkProcessLine
        , wrkFinish
        ) where
 
@@ -396,17 +397,12 @@ evalRand = do
      modify $ (\s -> s { hcStdGen = g' })
      return $! VDouble r
 
--- q <- newEmptyMVar
--- j <- newEmptyMVar
--- forkIO $ runReaderThread reader h "\n" " " q >> return ()
--- forkFinally (worker code q) $ \_ -> putMVar j ()
--- takeMVar j
--- return ()
-
 wrkInit :: Interpreter Bool
+{-# INLINE wrkInit #-}
 wrkInit = liftM fst $ gets hcOPCODES >>= execBC'
 
 wrkLoop :: Interpreter ()        
+{-# INLINE wrkLoop #-}
 wrkLoop = do
    q <- (gets hcInput >>= liftIO . fetch)
    case q of
@@ -414,8 +410,21 @@ wrkLoop = do
       (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
                      wrkProc >>= \cont -> when cont wrkLoop
 
-{-# INLINE wrkProc #-}
+wrkProcessLine :: B.ByteString -> Interpreter Bool
+{-# INLINE wrkProcessLine #-}
+wrkProcessLine l = do
+   flds <- splitIntoFields l
+   let fldm = IM.fromList (zip [1,2..] (map valstr flds))  
+   modify $ \s -> s { hcThisLine = l
+                    , hcFields   = fldm
+                    , hcNF  = VDouble $ fromIntegral $ length flds
+                    , hcNR  = VDouble (succ $ toDouble $ hcNR  s)
+                    , hcFNR = VDouble (succ $ toDouble $ hcFNR s)
+                    }
+   liftM fst $ gets hcOPCODES >>= execBC'
+   
 wrkProc :: Interpreter Bool
+{-# INLINE wrkProc #-}
 wrkProc = do
    w <- gets hcWorkload
    case w of
@@ -426,6 +435,7 @@ wrkProc = do
         if cont then wrkProc else return False 
 
 wrkFinish :: Interpreter ()
+{-# INLINE wrkFinish #-}
 wrkFinish = do
    gets hcOPCODES   >>= execBC'
    gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
