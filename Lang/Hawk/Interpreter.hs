@@ -103,11 +103,14 @@ type Interpreter a = StateT HawkContext IO a
 runInterpreter :: Interpreter a -> HawkContext -> IO (a, HawkContext)
 runInterpreter stt c = runStateT stt c
 
+defaultValue :: Value
+defaultValue = valstr ""
+
 (*!) :: Ord k => M.Map k Value -> k -> Value
-m *! k = M.findWithDefault (VDouble 0) k m
+m *! k = M.findWithDefault defaultValue k m
 
 (*!!) :: IM.IntMap Value -> Int -> Value
-m *!! k = IM.findWithDefault (VDouble 0) k m
+m *!! k = IM.findWithDefault defaultValue k m
 
 assignToField :: ArithOp -> Value -> Value -> Interpreter ()
 assignToField op vi val = do

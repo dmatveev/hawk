@@ -113,10 +113,8 @@ executeSync startup (CompiledSync actions) finalize h file = do
    rs <- liftM toString $ gets hcRS
    ml <- liftIO $ nextLine is rs
    case ml of
+     (Just l) -> wrkProcessLine l >>= \cont -> when cont syncLoop
      Nothing  -> return ()
-     (Just l) -> do
-        cont <- wrkProcessLine l
-        if cont then syncLoop else return ()
 
 executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
