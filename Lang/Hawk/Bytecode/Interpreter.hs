@@ -39,100 +39,101 @@ import Lang.Hawk.Runtime.Printf (sprintf)
 {-# INLINE (*:) #-}
 x *: xs = seq x x:xs
 
-bc :: [Value] -> OpCode -> Interpreter [Value]
-bc (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $ (calcArith l r o)*:st
-bc st         (PUSH v)   = {-# SCC "PUSH"  #-} return $ v*:st
-bc (top:st)   POP        = {-# SCC "POP"   #-} return $ st
-bc (top:st)   FIELD      = {-# SCC "FIELD" #-} fref top >>= \v -> return $ v*:st
-bc (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField Set i v >> (return $ v*:st)
-bc (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField o   i v >> (return $ st)
-bc st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $ readIORef r) >>= \v -> return $ v*:st
-bc (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ top*:st)
-bc (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $ st)
-bc st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef b >>= \v -> return $ v*:st
-bc (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar b (const top) >> (return $ top*:st)
-bc (top:st)   (BMOD o b) = {-# SCC "BMOD"  #-} modBVar b (\v -> calcArith v top o) >> (return $ st)
-bc (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $ v*:st
-bc (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ v*:st) -- TODO: previously, value was pushed on stack
-bc (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $ v*:st
-bc (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o)*:st
-bc (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top)*:st
-bc (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top)*:st
-bc st         (CALL f n) = {-# SCC "CALL"  #-} funcall st f n
-bc (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} liftIO (calcSplit s fs a) >>= \v -> return $ v*:st
-bc st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top*:st
-bc st         (PRN n)    = {-# SCC "PRN"   #-} let (vs,r) = splitAt n     st in (prn vs    >> return r)
-bc st         (FPRN n m) = {-# SCC "FPRN"  #-} let (vs,r) = splitAt (n+1) st in (fprn m vs >> return r)
-bc st         (PPRN n)   = {-# SCC "PPRN"  #-} let (vs,r) = splitAt (n+1) st in (pprn vs   >> return r)
-bc (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv)*:st
-bc (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v*:st
-bc (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
-bc st         (ADRP r)   = {-# SCC "ADRP"  #-} (liftIO $ writeIORef r M.empty) >> (return $ st)
-bc st         (FETCH r)  = {-# SCC "FETCH" #-} afetch r >> (return $ st)
-bc st         (ANXT r)   = {-# SCC "ANXT"  #-} anxt r >> (return $ st)
-bc st         ACHK       = {-# SCC "ACHK"  #-} gets hcKEYS >>= \ks -> return $ (vBool (not $ null ks))*:st
-bc st         KDRP       = {-# SCC "KDRP"  #-} do modify $ \s -> s { hcKEYS   = head (hcKSTACK s)
-                                                                   , hcKSTACK = tail (hcKSTACK s) }
-                                                  return $ st
-bc st         DRP        = {-# SCC "DRP"   #-} return $! []
-bc (rv:lv:st) CAT        = {-# SCC "CAT"   #-} return $ (vConcat lv rv)*:st
-bc st         GETL       = {-# SCC "GETL"  #-} getline         >>= \v -> return $ v*:st
-bc st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV r      >>= \v -> return $ v*:st
-bc (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline top    >>= \v -> return $ v*:st
-bc (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV r top >>= \v -> return $ v*:st
-bc (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline top    >>= \v -> return $ v*:st
-bc (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV r top >>= \v -> return $ v*:st 
-bc st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND") >> return st
+bc :: HawkContext -> [Value] -> OpCode -> Interpreter [Value]
+bc ctx (r:l:st)   (ARITH o)  = {-# SCC "ARITH" #-} return $ (calcArith l r o)*:st
+bc ctx st         (PUSH v)   = {-# SCC "PUSH"  #-} return $ v*:st
+bc ctx (top:st)   POP        = {-# SCC "POP"   #-} return $ st
+bc ctx (top:st)   FIELD      = {-# SCC "FIELD" #-} fref ctx top >>= \v -> return $ v*:st
+bc ctx (i:v:st)   FSET       = {-# SCC "FSET"  #-} assignToField ctx Set i v >> (return $ v*:st)
+bc ctx (i:v:st)   (FMOD o)   = {-# SCC "FMOD"  #-} assignToField ctx o   i v >> (return $ st)
+bc ctx st         (VAR r)    = {-# SCC "VAR"   #-} (liftIO $ readIORef r) >>= \v -> return $ v*:st
+bc ctx (top:st)   (VSET r)   = {-# SCC "VSET"  #-} (liftIO $ writeIORef r top) >> (return $ top*:st)
+bc ctx (top:st)   (VMOD o r) = {-# SCC "VMOD"  #-} (liftIO $ modifyIORef' r (\v -> calcArith v top o)) >> (return $ st)
+bc ctx st         (BVAR b)   = {-# SCC "BVAR"  #-} evalBVariableRef ctx b >>= \v -> return $ v*:st
+bc ctx (top:st)   (BSET b)   = {-# SCC "BSET"  #-} modBVar ctx b (const top) >> (return $ top*:st)
+bc ctx (top:st)   (BMOD o b) = {-# SCC "BMOD"  #-} modBVar ctx b (\v -> calcArith v top o) >> (return $ st)
+bc ctx (idx:st)   (ARR r)    = {-# SCC "ARR"   #-} aref r idx >>= \v -> return $ v*:st
+bc ctx (idx:v:st) (ASET r)   = {-# SCC "ASET"  #-} aset r idx v >> (return $ v*:st) -- TODO: previously, value was pushed on stack
+bc ctx (idx:v:st) (AMOD o r) = {-# SCC "AMOD"  #-} amod r idx v o >>= \v -> return $ v*:st
+bc ctx (rv:lv:st) (CMP o)    = {-# SCC "CMP"   #-} return $ (cmpValues lv rv o)*:st
+bc ctx (top:st)   NOT        = {-# SCC "NOT"   #-} return $ (vNot top)*:st
+bc ctx (top:st)   NEG        = {-# SCC "NEG"   #-} return $ (vNeg top)*:st
+bc ctx st         (CALL f n) = {-# SCC "CALL"  #-} funcall ctx st f n
+bc ctx (fs:s:st)  (SPLIT a)  = {-# SCC "SPLIT" #-} liftIO (calcSplit s fs a) >>= \v -> return $ v*:st
+bc ctx st@(top:_) DUP        = {-# SCC "DUP"   #-} return $ top*:st
+bc ctx st         (PRN n)    = {-# SCC "PRN"   #-} let (vs,r) = splitAt n     st in (prn  ctx vs   >> return r)
+bc ctx st         (FPRN n m) = {-# SCC "FPRN"  #-} let (vs,r) = splitAt (n+1) st in (fprn ctx m vs >> return r)
+bc ctx st         (PPRN n)   = {-# SCC "PPRN"  #-} let (vs,r) = splitAt (n+1) st in (pprn ctx vs   >> return r)
+bc ctx (rv:lv:st) MATCH      = {-# SCC "MATCH" #-} return $ (match lv rv)*:st
+bc ctx (idx:st)   (IN r)     = {-# SCC "IN"    #-} alkp r idx >>= \v -> return $ v*:st
+bc ctx (idx:st)   (ADEL r)   = {-# SCC "ADEL"  #-} adel r idx >> (return $ st)
+bc ctx st         (ADRP r)   = {-# SCC "ADRP"  #-} (writeIORef r M.empty) >> (return $ st)
+bc ctx st         (FETCH r)  = {-# SCC "FETCH" #-} afetch ctx r >> (return $ st)
+bc ctx st         (ANXT r)   = {-# SCC "ANXT"  #-} anxt ctx r >> (return $ st)
+bc ctx st         ACHK       = {-# SCC "ACHK"  #-} readIORef (hcKEYS ctx) >>=
+                                                      \ks -> return $ (vBool (not $ null ks))*:st
+bc ctx st         KDRP       = {-# SCC "KDRP"  #-} do ks <- readIORef (hcKSTACK ctx)
+                                                      writeIORef (hcKEYS ctx)   $ head ks
+                                                      writeIORef (hcKSTACK ctx) $ tail ks
+                                                      return $ st
+bc ctx st         DRP        = {-# SCC "DRP"   #-} return $! []
+bc ctx (rv:lv:st) CAT        = {-# SCC "CAT"   #-} return $ (vConcat lv rv)*:st
+bc ctx st         GETL       = {-# SCC "GETL"  #-} getline   ctx       >>= \v -> return $ v*:st
+bc ctx st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV  ctx r     >>= \v -> return $ v*:st
+bc ctx (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline  ctx top   >>= \v -> return $ v*:st
+bc ctx (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV ctx r top >>= \v -> return $ v*:st
+bc ctx (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline  ctx top   >>= \v -> return $ v*:st
+bc ctx (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV ctx r top >>= \v -> return $ v*:st 
+bc ctx st         op         = (liftIO $ putStrLn $ "UNKNOWN COMMAND") >> return st
 
-execBC' :: [OpCode] -> Interpreter (Bool, [Value]) 
+execBC' :: HawkContext -> [OpCode] -> Interpreter (Bool, [Value]) 
 {-# INLINE execBC' #-}
-execBC' src = execBC src [] src
+execBC' ctx src = execBC ctx src [] src
 
-execBC :: [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
-execBC src st         []             = return (True, st)
-execBC src st         (op@EX:_)      = {-# SCC "EX"  #-} return (False, st)
-execBC src st         (op@NXT:_)     = {-# SCC "NXT" #-} return (True, st)
-execBC src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} if toBool top then execBC src st r else jmp src n st
-execBC src s@(top:st) (op@(JT  n):r) = {-# SCC "JT"  #-} if toBool top then jmp src n st else execBC src st r
-execBC src s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} jmp src n st
-execBC src st         (op:ops)       = {-# SCC "OP"  #-} bc st op   >>= \st' -> execBC src st' ops
+execBC :: HawkContext -> [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
+execBC ctx src st         []             = return (True, st)
+execBC ctx src st         (op@EX:_)      = {-# SCC "EX"  #-} return (False, st)
+execBC ctx src st         (op@NXT:_)     = {-# SCC "NXT" #-} return (True, st)
+execBC ctx src s@(top:st) (op@(JF  n):r) = {-# SCC "JF"  #-} if toBool top then execBC ctx src st r else jmp ctx src n st
+execBC ctx src s@(top:st) (op@(JT  n):r) = {-# SCC "JT"  #-} if toBool top then jmp ctx src n st else execBC ctx src st r
+execBC ctx src s@st       (op@(JMP n):_) = {-# SCC "JMP" #-} jmp ctx src n st
+execBC ctx src st         (op:ops)       = {-# SCC "OP"  #-} bc ctx st op   >>= \st' -> execBC ctx src st' ops
 
-jmp :: [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
+jmp :: HawkContext -> [OpCode] -> Int -> [Value] -> Interpreter (Bool, [Value])
 {-# INLINE jmp #-}
-jmp src n st = let r = drop n src in (execBC src st r)
+jmp ctx src n st = let r = drop n src in execBC ctx src st r
 
 
-funcall :: [Value] -> BFunc -> Int -> Interpreter [Value]
+funcall :: HawkContext -> [Value] -> BFunc -> Int -> Interpreter [Value]
 {-# INLINE funcall #-}
-funcall (vx:vy:st)    Atan2   2 = return $ (calcAtan2 vy vx)*:st
-funcall (top:st)      Cos     1 = return $ (proxyFcn cos top)*:st
-funcall (top:st)      Exp     1 = return $ (proxyFcn exp top)*:st
-funcall (top:st)      Int     1 = return $ (proxyFcn (fromIntegral.truncate) top)*:st
-funcall (top:st)      Log     1 = return $ (proxyFcn log top)*:st
-funcall (top:st)      Sin     1 = return $ (proxyFcn sin top)*:st
-funcall (top:st)      Sqrt    1 = return $ (proxyFcn sqrt top)*:st
-funcall st            Srand   0 = intSRand >> (return $ (VDouble 0)*:st)
-funcall (top:st)      Srand   1 = intSRand' top >> (return $ (VDouble 0)*:st)
-funcall st            Rand    0 = evalRand >>= \v -> return $ v*:st
-funcall (vt:vs:st)    Index   2 = return $ (calcIndex vs vt)*:st
-funcall (top:st)      Length  1 = return $ (calcLength top)*:st
-funcall (vp:vs:st)    Substr  2 = return $ (calcSubstr vs vp)*:st
-funcall (vn:vp:vs:st) Substr  3 = return $ (calcSubstr2 vs vp vn)*:st
-funcall (vr:vs:st)    FMatch  2 = fmatch vs vr >>= \v -> return $ v*:st
-funcall (vl:vs:vr:st) FSub    3 = intFSub calcSub vr vs (toString vl) st
-funcall (vl:vs:vr:st) GSub    3 = intFSub calcGSub vr vs (toString vl) st
-funcall st            Printf  n = intPrintf (reverse $ take n st) >> return ((VDouble 0)*:st) 
-funcall st            SPrintf n = let (rvs,r)  = splitAt n st
-                                      (fmt:vs) = reverse rvs
-                                  in return $ (valstr $ sprintf (toString fmt) vs)*:r
-funcall (top:st)      Close   1 = intClose (toString top) >>= \v -> return (v*:st)
+funcall ctx (vx:vy:st)    Atan2   2 = return $ (calcAtan2 vy vx)*:st
+funcall ctx (top:st)      Cos     1 = return $ (proxyFcn cos top)*:st
+funcall ctx (top:st)      Exp     1 = return $ (proxyFcn exp top)*:st
+funcall ctx (top:st)      Int     1 = return $ (proxyFcn (fromIntegral.truncate) top)*:st
+funcall ctx (top:st)      Log     1 = return $ (proxyFcn log top)*:st
+funcall ctx (top:st)      Sin     1 = return $ (proxyFcn sin top)*:st
+funcall ctx (top:st)      Sqrt    1 = return $ (proxyFcn sqrt top)*:st
+funcall ctx st            Srand   0 = intSRand ctx >> (return $ (VDouble 0)*:st)
+funcall ctx (top:st)      Srand   1 = intSRand' ctx top >> (return $ (VDouble 0)*:st)
+funcall ctx st            Rand    0 = evalRand ctx >>= \v -> return $ v*:st
+funcall ctx (vt:vs:st)    Index   2 = return $ (calcIndex vs vt)*:st
+funcall ctx (top:st)      Length  1 = return $ (calcLength top)*:st
+funcall ctx (vp:vs:st)    Substr  2 = return $ (calcSubstr vs vp)*:st
+funcall ctx (vn:vp:vs:st) Substr  3 = return $ (calcSubstr2 vs vp vn)*:st
+funcall ctx (vr:vs:st)    FMatch  2 = fmatch ctx vs vr >>= \v -> return $ v*:st
+funcall ctx (vl:vs:vr:st) FSub    3 = intFSub calcSub vr vs (toString vl) st
+funcall ctx (vl:vs:vr:st) GSub    3 = intFSub calcGSub vr vs (toString vl) st
+funcall ctx st            Printf  n = intPrintf (reverse $ take n st) >> return ((VDouble 0)*:st) 
+funcall ctx st            SPrintf n = let (rvs,r)  = splitAt n st
+                                          (fmt:vs) = reverse rvs
+                                      in return $ (valstr $ sprintf (toString fmt) vs)*:r
+funcall ctx (top:st)      Close   1 = intClose ctx (toString top) >>= \v -> return (v*:st)
 
-fmatch :: Value -> Value -> Interpreter Value
-fmatch s r = do
+fmatch :: HawkContext -> Value -> Value -> Interpreter Value
+fmatch ctx s r = do
    let (rS,rL) = calcMatch s r
-   modify $ \s -> s { hcRSTART  = VDouble (fromIntegral rS)
-                    , hcRLENGTH = VDouble (fromIntegral $ if rL == 0 then -1 else rL)
-                    }
+   writeIORef (hcRSTART  ctx) $ VDouble (fromIntegral rS)
+   writeIORef (hcRLENGTH ctx) $ VDouble (fromIntegral $ if rL == 0 then -1 else rL)
    return $! vBool (rS /= 0)
 
 {-# INLINE intFSub #-}
@@ -166,78 +167,78 @@ amod r i v o = liftIO $ do
 adel :: IORef Array -> Value -> Interpreter ()
 adel r i = liftIO $ modifyIORef' r $ \arr -> M.delete (key i) arr
 
-afetch :: IORef Array -> Interpreter ()
-afetch r = do
+afetch :: HawkContext -> IORef Array -> Interpreter ()
+afetch ctx r = do
    ks <- liftM (map fst . M.toList) $ liftIO (readIORef r)
-   modify $ \s -> s { hcKSTACK = (hcKEYS s):(hcKSTACK s)
-                    , hcKEYS   = ks
-                    }
+   tks <- readIORef (hcKEYS ctx) 
+   modifyIORef' (hcKSTACK ctx) $ \k -> tks:k
+   writeIORef (hcKEYS ctx) ks
 
-anxt :: IORef Value -> Interpreter ()
-anxt r = do
-   (k:ks) <- gets hcKEYS
-   liftIO $ writeIORef r (valstr $ B.pack k)
-   modify $ \s -> s { hcKEYS = ks }
+anxt :: HawkContext -> IORef Value -> Interpreter ()
+anxt ctx r = do
+   (k:ks) <- readIORef (hcKEYS ctx)
+   writeIORef r (valstr $ B.pack k)
+   writeIORef (hcKEYS ctx) ks
 
-fref :: Value -> Interpreter Value
+fref :: HawkContext -> Value -> Interpreter Value
 {-# INLINE fref #-}
-fref v = do
+fref ctx v = do
    let i = toInt v 
    if i == 0
-   then gets hcThisLine >>= (return . valstr)
-   else liftM (*!! i) $ gets hcFields
+   then readIORef (hcThisLine ctx) >>= (return . valstr)
+   else liftM (*!! i) $ readIORef (hcFields ctx)
 
-prn :: [Value] -> Interpreter ()
-prn [] =  gets hcThisLine >>= (liftIO . B.putStrLn)
-prn vs = do
-   ofs <- liftM toString $ gets hcOFS
-   ors <- liftM toString $ gets hcORS
+prn :: HawkContext -> [Value] -> Interpreter ()
+prn ctx [] =  readIORef (hcThisLine ctx) >>= B.putStrLn
+prn ctx vs = do
+   ofs <- liftM toString $ readIORef (hcOFS ctx)
+   ors <- liftM toString $ readIORef (hcORS ctx)
    let str = B.intercalate ofs $ map toString vs
-   liftIO $ B.putStr $ B.append str ors
+   B.putStr $ B.append str ors
 
-fprn :: FileMod -> [Value] -> Interpreter ()
-fprn m (f:[]) = gets hcThisLine >>= writeToHandle m (toString f)
-fprn m (f:vs) = do
-   ofs <- liftM toString $ gets hcOFS
+fprn :: HawkContext -> FileMod -> [Value] -> Interpreter ()
+fprn ctx m (f:[]) = readIORef (hcThisLine ctx) >>= writeToHandle ctx m (toString f)
+fprn ctx m (f:vs) = do
+   ofs <- liftM toString $ readIORef (hcOFS ctx)
    let str = B.intercalate ofs $ map toString vs
-   writeToHandle m (toString f) str
+   writeToHandle ctx m (toString f) str
 
-pprn :: [Value] -> Interpreter ()
-pprn (f:[]) = gets hcThisLine >>= writeToProcess (toString f)
-pprn (f:vs) = do
-   ofs <- liftM toString $ gets hcOFS
+pprn :: HawkContext -> [Value] -> Interpreter ()
+pprn ctx (f:[]) = readIORef (hcThisLine ctx) >>= writeToProcess ctx (toString f)
+pprn ctx (f:vs) = do
+   ofs <- liftM toString $ readIORef (hcOFS ctx)
    let str = B.intercalate ofs $ map toString vs
-   writeToProcess (toString f) str
+   writeToProcess ctx (toString f) str
 
-writeToHandle :: FileMod -> B.ByteString -> B.ByteString -> Interpreter ()
-writeToHandle m f str = do
-   h <- intGetHandle f m
-   ors <- liftM toString $ gets hcORS
-   liftIO $ B.hPutStr h (B.append str ors)
+writeToHandle :: HawkContext -> FileMod -> B.ByteString -> B.ByteString -> Interpreter ()
+writeToHandle ctx m f str = do
+   h <- intGetHandle ctx f m
+   ors <- liftM toString $ readIORef (hcORS ctx)
+   B.hPutStr h (B.append str ors)
 
-writeToProcess :: B.ByteString -> B.ByteString -> Interpreter ()
-writeToProcess f str = do
-   h <- intGetProcessHandle f
-   ors <- liftM toString $ gets hcORS
-   liftIO $ B.hPutStr h (B.append str ors)
+writeToProcess :: HawkContext -> B.ByteString -> B.ByteString -> Interpreter ()
+writeToProcess ctx f str = do
+   h <- intGetProcessHandle ctx f
+   ors <- liftM toString $ readIORef (hcORS ctx)
+   B.hPutStr h (B.append str ors)
 
-intGetHandle :: B.ByteString -> FileMod -> Interpreter Handle
-intGetHandle f m = do
-   mh <- liftM (M.lookup f) $ gets hcHandles
+intGetHandle :: HawkContext -> B.ByteString -> FileMod -> Interpreter Handle
+intGetHandle ctx f m = do
+   mh <- liftM (M.lookup f) $ readIORef (hcHandles ctx)
    case mh of 
      Just h  -> return h
-     Nothing -> do h <- liftIO $ openFile (B.unpack f) (toMode m)
-                   modify $ \s -> s { hcHandles = M.insert f h (hcHandles s) }
+     Nothing -> do h <- openFile (B.unpack f) (toMode m)
+                   modifyIORef' (hcHandles ctx) $ M.insert f h
                    return h
 
-intGetProcessHandle :: B.ByteString -> Interpreter Handle
-intGetProcessHandle cmd = do
-   mh <- liftM (M.lookup cmd) $ gets hcPHandles
+intGetProcessHandle :: HawkContext -> B.ByteString -> Interpreter Handle
+intGetProcessHandle ctx cmd = do
+   mh <- liftM (M.lookup cmd) $ readIORef (hcPHandles ctx)
    case mh of 
      Just (_,h) -> return h
      Nothing    -> do
-       (Just hin, _, _, ph) <- liftIO $ createProcess $ (shell cmd') {std_in = CreatePipe}
-       modify $ \s -> s { hcPHandles = M.insert cmd (ph,hin) (hcPHandles s) }
+       (Just hin, _, _, ph) <- createProcess $ (shell cmd') {std_in = CreatePipe}
+       modifyIORef' (hcPHandles ctx) $ M.insert cmd (ph,hin)
        return hin
  where cmd' = B.unpack cmd
 
@@ -245,135 +246,132 @@ intGetProcessHandle cmd = do
 toMode ModAppend  = AppendMode
 toMode ModRewrite = WriteMode
 
-setupContext :: Record -> [Record] ->Interpreter ()
+setupContext :: HawkContext -> Record -> [Record] ->Interpreter ()
 {-# INLINE setupContext #-}
-setupContext (Record _ l nf flds) rs = {-# SCC "CTXMOD" #-} modify $ \s ->
-   s { hcThisLine = l
-     , hcFields   = flds
-     , hcNF       = VDouble (fromIntegral $ nf)
-     , hcNR       = VDouble (succ $ toDouble $ hcNR  s)
-     , hcFNR      = VDouble (succ $ toDouble $ hcFNR s)
-     , hcWorkload = rs
-     }
+setupContext ctx (Record _ l nf flds) rs = {-# SCC "CTXMOD" #-} do
+   writeIORef (hcThisLine ctx) l
+   writeIORef (hcFields   ctx) flds
+   writeIORef (hcNF       ctx) $ VDouble (fromIntegral $ nf)
+   modifyIORef' (hcNR     ctx) $ \v -> VDouble (succ $ toDouble v)
+   modifyIORef' (hcFNR    ctx) $ \v -> VDouble (succ $ toDouble v)
+   writeIORef (hcWorkload ctx) rs
 
-getline :: Interpreter Value
-getline = do
-      w <- gets hcWorkload
+
+getline :: HawkContext -> Interpreter Value
+getline ctx = do
+      w <- readIORef (hcWorkload ctx)
       case w of
-        [] -> do i  <- gets hcInput
-                 mw <- liftIO $ fetch i
+        [] -> do i  <- readIORef (hcInput ctx)
+                 mw <- fetch i
                  case mw of
                     Nothing                  -> return $ VDouble $! -1
                     Just (Workload _ (r:rs)) -> handleRecord r rs
         (r:rs) -> handleRecord r rs 
- where handleRecord r rs = setupContext r rs >> return (VDouble $! 1)
+ where handleRecord r rs = setupContext ctx r rs >> return (VDouble $! 1)
 
-getlineV :: (IORef Value) -> Interpreter Value
-getlineV ref = do
-      w <- gets hcWorkload
+getlineV :: HawkContext -> (IORef Value) -> Interpreter Value
+getlineV ctx ref = do
+      w <- readIORef (hcWorkload ctx)
       case w of
-        [] -> do i  <- gets hcInput
-                 mw <- liftIO $ fetch i
+        [] -> do i  <- readIORef (hcInput ctx)
+                 mw <- fetch i
                  case mw of
                     Nothing                  -> return $ VDouble $! -1
                     Just (Workload _ (r:rs)) -> handleRecord r rs
         (r:rs) -> handleRecord r rs 
  where handleRecord (Record _ l nf flds) rs = do
          liftIO $ writeIORef ref (valstr l)
-         modify $ \s -> s { hcNR  = VDouble (succ $ toDouble $ hcNR  s)
-                          , hcFNR = VDouble (succ $ toDouble $ hcFNR s)
-                          }
+         modifyIORef' (hcNR  ctx) $ \v -> VDouble (succ $ toDouble v)
+         modifyIORef' (hcFNR ctx) $ \v -> VDouble (succ $ toDouble v)
          return $ VDouble $! 1
 
-fgetline :: Value -> Interpreter Value
-fgetline vf = do
-   is <- fGetInput (toString vf)
-   rs <- gets hcRS
-   ml <- liftIO $ nextLine is (toString rs)
+fgetline :: HawkContext -> Value -> Interpreter Value
+fgetline ctx vf = do
+   is <- fGetInput ctx (toString vf)
+   rs <- readIORef (hcRS ctx)
+   ml <- nextLine is (toString rs)
    case ml of
       Nothing  -> return $ VDouble $ -1
-      (Just l) -> do flds <- splitIntoFields l
+      (Just l) -> do flds <- splitIntoFields ctx l
                      let fldm = IM.fromList (zip [1,2..] (map valstr flds))
-                     modify $ \s -> s { hcThisLine = l
-                                      , hcFields   = fldm
-                                      , hcNF       = VDouble $ fromIntegral $ length flds
-                                      }
+                     writeIORef (hcThisLine ctx) l
+                     writeIORef (hcFields   ctx) fldm
+                     writeIORef (hcNF       ctx) $ VDouble $ fromIntegral $ length flds
                      return $ VDouble 1
 
-fgetlineV :: IORef Value -> Value -> Interpreter Value
-fgetlineV r vf = do
-   is <- fGetInput (toString vf)
-   rs <- gets hcRS
-   ml <- liftIO $ nextLine is (toString rs)
+fgetlineV :: HawkContext -> IORef Value -> Value -> Interpreter Value
+fgetlineV ctx r vf = do
+   is <- fGetInput ctx (toString vf)
+   rs <- readIORef (hcRS ctx)
+   ml <- nextLine is (toString rs)
    case ml of
       Nothing  -> return $ VDouble $ -1
-      (Just l) -> do liftIO $ writeIORef r (valstr l)
+      (Just l) -> do writeIORef r (valstr l)
                      return $ VDouble 1
 
-fGetInput :: B.ByteString -> Interpreter InputSource
-fGetInput f = do 
-   mi <- liftM (M.lookup f) $ gets hcFInputs
+fGetInput :: HawkContext -> B.ByteString -> Interpreter InputSource
+fGetInput ctx f = do 
+   mi <- liftM (M.lookup f) $ readIORef (hcFInputs ctx)
    case mi of 
      Just is  -> return is
-     Nothing  -> do is <- liftIO $ openInputFile f
-                    modify $ \s -> s { hcFInputs = M.insert f is (hcFInputs s)}
+     Nothing  -> do is <- openInputFile f
+                    modifyIORef' (hcFInputs ctx) $ M.insert f is
                     return is
 
 
-pgetline :: Value -> Interpreter Value
-pgetline vcmd = do
-   (_,is) <- intPopen (toString vcmd)
-   rs <- gets hcRS
-   ml <- liftIO $ nextLine is (toString rs)
+pgetline :: HawkContext -> Value -> Interpreter Value
+pgetline ctx vcmd = do
+   (_,is) <- intPopen ctx (toString vcmd)
+   rs <- readIORef (hcRS ctx)
+   ml <- nextLine is (toString rs)
    case ml of
       Nothing  -> return $ VDouble $ -1
-      (Just l) -> do flds <- splitIntoFields l
+      (Just l) -> do flds <- splitIntoFields ctx l
                      let fldm = IM.fromList (zip [1,2..] (map valstr flds))
-                     modify $ \s -> s { hcThisLine = l
-                                      , hcFields   = fldm
-                                      , hcNF       = VDouble $ fromIntegral $ length flds
-                                      }
+                     writeIORef (hcThisLine ctx) l
+                     writeIORef (hcFields   ctx) fldm
+                     writeIORef (hcNF       ctx) $ VDouble $ fromIntegral $ length flds
                      return $ VDouble 1
 
-pgetlineV :: IORef Value -> Value -> Interpreter Value
-pgetlineV r vcmd = do
-   (_,is) <- intPopen (toString vcmd)
-   rs <- gets hcRS
-   ml <- liftIO $ nextLine is (toString rs)
+pgetlineV :: HawkContext -> IORef Value -> Value -> Interpreter Value
+pgetlineV ctx r vcmd = do
+   (_,is) <- intPopen ctx (toString vcmd)
+   rs <- readIORef (hcRS ctx)
+   ml <- nextLine is (toString rs)
    case ml of
       Nothing  -> return $ VDouble $ -1
       (Just l) -> do liftIO $ writeIORef r (valstr l)
                      return $ VDouble 1 
 
-intPopen :: B.ByteString -> Interpreter (ProcessHandle, InputSource)
-intPopen cmd = do
-   mp <- liftM (M.lookup cmd) $ gets hcIPHandles
+intPopen :: HawkContext -> B.ByteString -> Interpreter (ProcessHandle, InputSource)
+intPopen ctx cmd = do
+   mp <- liftM (M.lookup cmd) $ readIORef (hcIPHandles ctx)
    case mp of
       (Just p) -> return p
       Nothing  -> do
-         (_, Just hout, _, ph) <- liftIO $ createProcess $ (shell cmd') {std_out = CreatePipe}
-         is <- liftIO $ fromHandle hout
+         (_, Just hout, _, ph) <- createProcess $ (shell cmd') {std_out = CreatePipe}
+         is <- fromHandle hout
          let p = (ph,is)
-         modify $ \s -> s { hcIPHandles = M.insert cmd p (hcIPHandles s) }
+         modifyIORef' (hcIPHandles ctx) $ M.insert cmd p
          return p
   where cmd' = B.unpack cmd
 
 -- TODO: What about input files/pipes? The book does not say anything about that.
-intClose :: B.ByteString -> Interpreter Value
-intClose name = do
-   mp <- liftM (M.lookup name) $ gets hcPHandles
+intClose :: HawkContext -> B.ByteString -> Interpreter Value
+intClose ctx name = do
+   mp <- liftM (M.lookup name) $ readIORef (hcPHandles ctx)
    case mp of
       (Just (p,h)) -> do
-         modify $ \s -> s { hcPHandles = M.delete name (hcPHandles s) }
-         ex <- liftIO $ hClose h >> waitForProcess p
+         modifyIORef' (hcPHandles ctx) $ M.delete name
+         ex <- hClose h >> waitForProcess p
          case ex of
            ExitSuccess     -> return $ VDouble 0
            (ExitFailure i) -> return $ VDouble $ fromIntegral i
       Nothing -> do
-        mf <- liftM (M.lookup name) $ gets hcHandles
+        mf <- liftM (M.lookup name) $ readIORef (hcHandles ctx)
         case mf of
-           (Just h) -> do modify $ \s -> s { hcHandles = M.delete name (hcHandles s) }
-                          liftIO (hClose h)
+           (Just h) -> do modifyIORef' (hcHandles ctx) $ M.delete name
+                          hClose h
                           return $ VDouble $ -1
            Nothing  -> return $ VDouble $ -1
 
@@ -382,66 +380,65 @@ intPrintf :: [Value] -> Interpreter ()
 intPrintf (fmt:vs) = liftIO $ B.putStr $ sprintf (toString fmt) vs
 
 
-intSRand :: Interpreter ()
+intSRand :: HawkContext -> Interpreter ()
 {-# INLINE intSRand #-}
-intSRand = liftIO getStdGen >>= \g -> modify (\s -> s {hcStdGen = g})
+intSRand ctx = getStdGen >>= writeIORef (hcStdGen ctx)
 
-intSRand' :: Value -> Interpreter ()
+intSRand' :: HawkContext -> Value -> Interpreter ()
 {-# INLINE intSRand' #-}
-intSRand' i = modify (\s -> s {hcStdGen = mkStdGen (toInt i)})
+intSRand' ctx i = writeIORef (hcStdGen ctx) $ mkStdGen (toInt i)
 
-evalRand :: Interpreter Value
-evalRand = do
-     g <- gets hcStdGen
+evalRand :: HawkContext -> Interpreter Value
+evalRand ctx = do
+     g <- readIORef (hcStdGen ctx)
      let (r, g') = randomR (0.0, 1.0) g
-     modify $ (\s -> s { hcStdGen = g' })
+     writeIORef (hcStdGen ctx) g'
      return $! VDouble r
 
-wrkInit :: Interpreter Bool
+wrkInit :: HawkContext -> Interpreter Bool
 {-# INLINE wrkInit #-}
-wrkInit = liftM fst $ gets hcOPCODES >>= execBC'
+wrkInit ctx = liftM fst $ readIORef (hcOPCODES ctx) >>= execBC' ctx
 
-wrkLoop :: Interpreter ()        
+wrkLoop :: HawkContext -> Interpreter ()        
 {-# INLINE wrkLoop #-}
-wrkLoop = do
-   q <- (gets hcInput >>= liftIO . fetch)
+wrkLoop ctx = do
+   q <- (readIORef (hcInput ctx) >>= fetch)
    case q of
       Nothing  -> return ()
-      (Just w) -> do modify $ \s -> s { hcWorkload = wRS w }
-                     wrkProc >>= \cont -> when cont wrkLoop
+      (Just w) -> do writeIORef (hcWorkload ctx) $ wRS w
+                     wrkProc ctx >>= \cont -> when cont $ wrkLoop ctx
 
-wrkProcessLine :: B.ByteString -> Interpreter Bool
+wrkProcessLine :: HawkContext -> B.ByteString -> Interpreter Bool
 {-# INLINE wrkProcessLine #-}
-wrkProcessLine l = do
-   flds <- splitIntoFields l
+wrkProcessLine ctx l = do
+   flds <- splitIntoFields ctx l
    let fldm = IM.fromList (zip [1,2..] (map valstr flds))  
-   modify $ \s -> s { hcThisLine = l
-                    , hcFields   = fldm
-                    , hcNF  = VDouble $ fromIntegral $ length flds
-                    , hcNR  = VDouble (succ $ toDouble $ hcNR  s)
-                    , hcFNR = VDouble (succ $ toDouble $ hcFNR s)
-                    }
-   liftM fst $ gets hcOPCODES >>= execBC'
+   writeIORef   (hcThisLine ctx) l
+   writeIORef   (hcFields   ctx) fldm
+   writeIORef   (hcNF       ctx) $ VDouble $ fromIntegral $ length flds
+   modifyIORef' (hcNR       ctx) $ \v -> VDouble (succ $ toDouble v)
+   modifyIORef' (hcFNR      ctx) $ \v -> VDouble (succ $ toDouble v)
+   liftM fst $ readIORef (hcOPCODES ctx) >>= execBC' ctx
    
-wrkProc :: Interpreter Bool
+wrkProc :: HawkContext -> Interpreter Bool
 {-# INLINE wrkProc #-}
-wrkProc = do
-   w <- gets hcWorkload
+wrkProc ctx = do
+   w <- readIORef (hcWorkload ctx)
    case w of
      [] -> return True
      (r:rs) -> do
-        setupContext r rs
-        (cont, _) <- (gets hcOPCODES >>= execBC')
-        if cont then wrkProc else return False 
+        setupContext ctx r rs
+        (cont, _) <- (readIORef (hcOPCODES ctx) >>= execBC' ctx)
+        if cont then wrkProc ctx else return False 
 
-wrkFinish :: Interpreter ()
+wrkFinish :: HawkContext -> Interpreter ()
 {-# INLINE wrkFinish #-}
-wrkFinish = do
-   gets hcOPCODES   >>= execBC'
-   gets hcHandles   >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
-   gets hcPHandles  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
+wrkFinish ctx = do
+   readIORef (hcOPCODES  ctx)  >>= execBC' ctx
+   readIORef (hcHandles  ctx)  >>= \hs -> liftIO $ mapM_ hClose (M.elems hs)
+   readIORef (hcPHandles ctx)  >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,h) -> do
        hClose h
        waitForProcess p
-   gets hcIPHandles >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
+   readIORef (hcIPHandles ctx) >>= \hs -> liftIO $ forM_ (M.elems hs) $ \(p,is) -> do
        closeStream is
        waitForProcess p

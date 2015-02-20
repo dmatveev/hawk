@@ -22,7 +22,10 @@ import Lang.Hawk.Runtime.Input
 import Control.Concurrent
 
 import System.IO
+import System.IO.Unsafe
 import System.Process
+
+import Data.IORef
 
 -- In the simplest case, we have two threads:
 -- READER - reads the input, parses lines and fields
@@ -99,37 +102,37 @@ run (CompiledSource startup actions finalize) h file = inThread $
    
 executeSync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeSync startup (CompiledSync actions) finalize h file = do
-  ctxStartup <- (fromHandle h) >>= emptyContext startup
-  (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
-  ctxAfterProc <-
-     if cont
-     then liftM snd $ runInterpreter syncLoop $ ctxAfterStartup { hcOPCODES = actions }
-     else return ctxAfterStartup
-  runInterpreter wrkFinish $ ctxAfterProc { hcOPCODES = finalize }
+  ctx <- (fromHandle h) >>= emptyContext startup
+  cont <- runInterpreter wrkInit ctx
+  when cont $ do
+     writeIORef (hcOPCODES ctx) actions
+     runInterpreter syncLoop ctx
+  writeIORef (hcOPCODES ctx) finalize
+  runInterpreter wrkFinish ctx
   return ()
  where
-  syncLoop = do
-   is <- gets hcInput
-   rs <- liftM toString $ gets hcRS
-   ml <- liftIO $ nextLine is rs
+  syncLoop ctx = do
+   is <- readIORef (hcInput ctx)
+   rs <- liftM toString $ readIORef (hcRS ctx)
+   ml <- nextLine is rs
    case ml of
-     (Just l) -> wrkProcessLine l >>= \cont -> when cont syncLoop
+     (Just l) -> wrkProcessLine ctx l >>= \cont -> when cont $ syncLoop ctx
      Nothing  -> return ()
 
 executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   q <- newEmptyMVar
   j <- newEmptyMVar
-  ctxStartup <- emptyContext startup $ External q
-  (cont, ctxAfterStartup) <- runInterpreter wrkInit ctxStartup
-  ctxAfterProc <-
-      if cont
-      then do let rs = toString . hcRS $ ctxAfterStartup
-                  fs = toString . hcFS $ ctxAfterStartup
-              forkIO $ runReaderThread reader h rs fs q
-              liftM snd $ runInterpreter wrkLoop $ ctxAfterStartup { hcOPCODES = actions }
-      else return ctxAfterStartup
-  runInterpreter wrkFinish $ ctxAfterProc { hcOPCODES = finalize }
+  ctx <- emptyContext startup $ External q
+  cont <- runInterpreter wrkInit ctx
+  when cont $ do
+     rs <- liftM toString $ readIORef (hcRS ctx)
+     fs <- liftM toString $ readIORef (hcFS ctx)
+     forkIO $ runReaderThread reader h rs fs q
+     writeIORef (hcOPCODES ctx) actions
+     runInterpreter wrkLoop $ ctx
+  writeIORef (hcOPCODES ctx) finalize
+  runInterpreter wrkFinish ctx
   return ()
  
 executeFullAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
