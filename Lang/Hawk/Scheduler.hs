@@ -105,16 +105,15 @@ executeSync startup (CompiledSync actions) finalize h file = do
   ctx <- (fromHandle h) >>= emptyContext startup
   cont <- runInterpreter wrkInit ctx
   when cont $ do
-     writeIORef (hcOPCODES ctx) actions
+     modifyIORef' ctx $ \s -> s {hcOPCODES = actions}
      runInterpreter syncLoop ctx
-  writeIORef (hcOPCODES ctx) finalize
+  modifyIORef' ctx $ \s -> s {hcOPCODES = finalize}
   runInterpreter wrkFinish ctx
   return ()
  where
   syncLoop ctx = do
-   is <- readIORef (hcInput ctx)
-   rs <- liftM toString $ readIORef (hcRS ctx)
-   ml <- nextLine is rs
+   cc <- readIORef ctx
+   ml <- nextLine (hcInput cc) (toString $ hcRS cc)
    case ml of
      (Just l) -> wrkProcessLine ctx l >>= \cont -> when cont $ syncLoop ctx
      Nothing  -> return ()
@@ -126,12 +125,11 @@ executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   ctx <- emptyContext startup $ External q
   cont <- runInterpreter wrkInit ctx
   when cont $ do
-     rs <- liftM toString $ readIORef (hcRS ctx)
-     fs <- liftM toString $ readIORef (hcFS ctx)
-     forkIO $ runReaderThread reader h rs fs q
-     writeIORef (hcOPCODES ctx) actions
+     cc <- readIORef ctx
+     forkIO $ runReaderThread reader h (toString $ hcRS cc) (toString $ hcFS cc) q
+     modifyIORef' ctx $ \s -> s {hcOPCODES = actions}
      runInterpreter wrkLoop $ ctx
-  writeIORef (hcOPCODES ctx) finalize
+  modifyIORef' ctx $ \s -> s {hcOPCODES = finalize}
   runInterpreter wrkFinish ctx
   return ()
  

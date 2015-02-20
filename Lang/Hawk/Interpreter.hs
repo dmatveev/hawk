@@ -3,6 +3,7 @@
 module Lang.Hawk.Interpreter
              (Interpreter
              , HawkContext(..)
+             , HawkContextPure(..)
              , (*!)
              , (*!!)
              , splitIntoFields
@@ -16,7 +17,6 @@ module Lang.Hawk.Interpreter
 import qualified Data.ByteString.Char8 as B
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad (liftM)
--- import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap as IM
 import System.Random (StdGen, mkStdGen)
@@ -29,76 +29,77 @@ import Lang.Hawk.Runtime (calcArith, splitIntoFields')
 import Lang.Hawk.Runtime.Input (Record, InputSource)
 
 import Data.IORef
-import System.IO.Unsafe
 
-data HawkContext = HawkContext
-                 { hcInput    :: IORef InputSource
-                 , hcWorkload :: IORef [Record]
+data HawkContextPure = HawkContextPure
+          { hcInput    :: !InputSource
+          , hcWorkload :: ![Record]
 
-                 , hcFields   :: IORef (IM.IntMap Value)
-                 , hcHandles  :: IORef (M.Map B.ByteString Handle)
-                 , hcPHandles :: IORef (M.Map B.ByteString (ProcessHandle,Handle))
-                 , hcIPHandles:: IORef (M.Map B.ByteString (ProcessHandle,InputSource))
-                 , hcFInputs  :: IORef (M.Map B.ByteString InputSource)
+          , hcFields   :: (IM.IntMap Value)
+          , hcHandles  :: !(M.Map B.ByteString Handle)
+          , hcPHandles :: !(M.Map B.ByteString (ProcessHandle,Handle))
+          , hcIPHandles:: !(M.Map B.ByteString (ProcessHandle,InputSource))
+          , hcFInputs  :: !(M.Map B.ByteString InputSource)
 
-                 , hcThisLine :: IORef B.ByteString
-                 , hcStdGen   :: IORef StdGen
+          , hcThisLine :: !B.ByteString
+          , hcStdGen   :: StdGen
 
-                 , hcOPCODES  :: IORef [OpCode]
+          , hcOPCODES  :: [OpCode]
 
-                 , hcKEYS     :: IORef [String]
-                 , hcKSTACK   :: IORef [[String]]
+          , hcKEYS     :: ![String]
+          , hcKSTACK   :: ![[String]]
 
-                 , hcARGC     :: IORef Value
-                 , hcARGV     :: IORef Value
-                 , hcFILENAME :: IORef Value
-                 , hcFNR      :: IORef Value
-                 , hcFS       :: IORef Value
-                 , hcNF       :: IORef Value
-                 , hcNR       :: IORef Value
-                 , hcOFMT     :: IORef Value
-                 , hcOFS      :: IORef Value
-                 , hcORS      :: IORef Value
-                 , hcRLENGTH  :: IORef Value
-                 , hcRS       :: IORef Value
-                 , hcRSTART   :: IORef Value
-                 , hcSUBSEP   :: IORef Value
-                 }
+          , hcARGC     :: !Value
+          , hcARGV     :: !Value
+          , hcFILENAME :: !Value
+          , hcFNR      :: !Value
+          , hcFS       :: !Value
+          , hcNF       :: !Value
+          , hcNR       :: !Value
+          , hcOFMT     :: !Value
+          , hcOFS      :: !Value
+          , hcORS      :: !Value
+          , hcRLENGTH  :: !Value
+          , hcRS       :: !Value
+          , hcRSTART   :: !Value
+          , hcSUBSEP   :: !Value
+          }
+
+type HawkContext = IORef HawkContextPure
 
 emptyContext :: [OpCode] -> InputSource -> IO HawkContext
 {-# INLINE emptyContext #-}
-emptyContext opcodes i = return $! HawkContext
-           { hcInput    = unsafePerformIO $ newIORef $ i
-           , hcWorkload = unsafePerformIO $ newIORef $ []
+emptyContext opcodes i = newIORef $! HawkContextPure
+           { hcInput    = i
+           , hcWorkload = []
 
-           , hcFields   = unsafePerformIO $ newIORef $ IM.empty
-           , hcHandles  = unsafePerformIO $ newIORef $ M.empty
-           , hcPHandles = unsafePerformIO $ newIORef $ M.empty
-           , hcIPHandles= unsafePerformIO $ newIORef $ M.empty
-           , hcFInputs  = unsafePerformIO $ newIORef $ M.empty
+           , hcFields   = IM.empty
+           , hcHandles  = M.empty
+           , hcPHandles = M.empty
+           , hcIPHandles= M.empty
+           , hcFInputs  = M.empty
 
-           , hcThisLine = unsafePerformIO $ newIORef $ ""
-           , hcStdGen   = unsafePerformIO $ newIORef $ mkStdGen 0
+           , hcThisLine = ""
+           , hcStdGen   = mkStdGen 0
 
-           , hcOPCODES  = unsafePerformIO $ newIORef $ opcodes
+           , hcOPCODES  = opcodes
 
-           , hcKEYS     = unsafePerformIO $ newIORef $ []
-           , hcKSTACK   = unsafePerformIO $ newIORef $ []
+           , hcKEYS     = []
+           , hcKSTACK   = []
 
-           , hcARGC     = unsafePerformIO $ newIORef $ defstr  ""
-           , hcARGV     = unsafePerformIO $ newIORef $ defstr  ""
-           , hcFILENAME = unsafePerformIO $ newIORef $ defstr  ""
-           , hcFNR      = unsafePerformIO $ newIORef $ VDouble 0
-           , hcFS       = unsafePerformIO $ newIORef $ defstr  " "
-           , hcNF       = unsafePerformIO $ newIORef $ VDouble 0
-           , hcNR       = unsafePerformIO $ newIORef $ VDouble 0
-           , hcOFMT     = unsafePerformIO $ newIORef $ defstr  "%.6f"
-           , hcOFS      = unsafePerformIO $ newIORef $ defstr  " "
-           , hcORS      = unsafePerformIO $ newIORef $ defstr  "\n"
-           , hcRLENGTH  = unsafePerformIO $ newIORef $ VDouble  0
-           , hcRS       = unsafePerformIO $ newIORef $ defstr  "\n"
-           , hcRSTART   = unsafePerformIO $ newIORef $ VDouble 0
-           , hcSUBSEP   = unsafePerformIO $ newIORef $ defstr  "\034"
+           , hcARGC     = defstr  ""
+           , hcARGV     = defstr  ""
+           , hcFILENAME = defstr  ""
+           , hcFNR      = VDouble 0
+           , hcFS       = defstr  " "
+           , hcNF       = VDouble 0
+           , hcNR       = VDouble 0
+           , hcOFMT     = defstr  "%.6f"
+           , hcOFS      = defstr  " "
+           , hcORS      = defstr  "\n"
+           , hcRLENGTH  = VDouble  0
+           , hcRS       = defstr  "\n"
+           , hcRSTART   = VDouble 0
+           , hcSUBSEP   = defstr  "\034"
            }
 
 type Interpreter a = IO a
@@ -120,72 +121,73 @@ assignToField ctx op vi val = do
      let i = toInt vi
      if i == 0
      then do
-          thisLine <- readIORef (hcThisLine ctx)
+          thisLine <- liftM hcThisLine $ readIORef ctx
           let newLine    = calcArith (valstr thisLine) val op
               newLineStr = toString newLine
-          writeIORef (hcThisLine ctx) newLineStr
+          modifyIORef' ctx $ \s -> s {hcThisLine = newLineStr}
           reconstructThisFields ctx newLineStr
      else do
-          oldFields <- readIORef (hcFields ctx)
+          oldFields <- liftM hcFields $ readIORef ctx
           let newValue  = calcArith (oldFields *!! i) val op
               newFields = IM.insert i newValue oldFields
-          writeIORef (hcFields ctx) newFields
+          modifyIORef' ctx $ \s -> s {hcFields = newFields}
           reconstructThisLine ctx
 
 splitIntoFields :: HawkContext -> B.ByteString -> Interpreter [B.ByteString]
 splitIntoFields ctx str = do
-   fs <- liftM toString $ readIORef (hcFS ctx)
+   fs <- liftM (toString.hcFS) $ readIORef ctx
    return $ splitIntoFields' fs str
 
 
 reconstructThisLine :: HawkContext -> Interpreter ()
 reconstructThisLine ctx = do
-     thisFields <- liftM IM.toList $ readIORef (hcFields ctx)
-     ofs        <- liftM toString  $ readIORef (hcOFS ctx)
-     let line = B.intercalate ofs $ map (toString . snd) thisFields
-     writeIORef (hcThisLine ctx) line
+     cc <- readIORef ctx
+     let thisFields =  IM.toList $ hcFields cc
+         ofs        =  toString  $ hcOFS cc
+         line = B.intercalate ofs $ map (toString . snd) thisFields
+     modifyIORef' ctx $ \s -> s {hcThisLine = line}
      return ()
 
 reconstructThisFields :: HawkContext -> B.ByteString -> Interpreter ()
 reconstructThisFields ctx l = do
     thisFields <- liftM (map valstr) $ splitIntoFields ctx l
     let thisFldMap = IM.fromList (zip [1,2..] thisFields)
-    writeIORef (hcFields ctx) thisFldMap
+    modifyIORef' ctx $ \s -> s {hcFields = thisFldMap}
 
 
 evalBVariableRef :: HawkContext -> BVar -> Interpreter Value
 {-# INLINE evalBVariableRef #-}
-evalBVariableRef ctx ARGC     = readIORef (hcARGC     ctx)
-evalBVariableRef ctx ARGV     = readIORef (hcARGV     ctx)
-evalBVariableRef ctx FILENAME = readIORef (hcFILENAME ctx)
-evalBVariableRef ctx FNR      = readIORef (hcFNR      ctx)
-evalBVariableRef ctx FS       = readIORef (hcFS       ctx)
-evalBVariableRef ctx NF       = readIORef (hcNF       ctx)
-evalBVariableRef ctx NR       = readIORef (hcNR       ctx)
-evalBVariableRef ctx OFMT     = readIORef (hcOFMT     ctx)
-evalBVariableRef ctx OFS      = readIORef (hcOFS      ctx)
-evalBVariableRef ctx ORS      = readIORef (hcORS      ctx)
-evalBVariableRef ctx RLENGTH  = readIORef (hcRLENGTH  ctx)
-evalBVariableRef ctx RS       = readIORef (hcRS       ctx)
-evalBVariableRef ctx RSTART   = readIORef (hcRSTART   ctx)
-evalBVariableRef ctx SUBSEP   = readIORef (hcSUBSEP   ctx)
+evalBVariableRef ctx ARGC     = liftM hcARGC     $ readIORef ctx
+evalBVariableRef ctx ARGV     = liftM hcARGV     $ readIORef ctx
+evalBVariableRef ctx FILENAME = liftM hcFILENAME $ readIORef ctx
+evalBVariableRef ctx FNR      = liftM hcFNR      $ readIORef ctx
+evalBVariableRef ctx FS       = liftM hcFS       $ readIORef ctx
+evalBVariableRef ctx NF       = liftM hcNF       $ readIORef ctx
+evalBVariableRef ctx NR       = liftM hcNR       $ readIORef ctx
+evalBVariableRef ctx OFMT     = liftM hcOFMT     $ readIORef ctx
+evalBVariableRef ctx OFS      = liftM hcOFS      $ readIORef ctx
+evalBVariableRef ctx ORS      = liftM hcORS      $ readIORef ctx
+evalBVariableRef ctx RLENGTH  = liftM hcRLENGTH  $ readIORef ctx
+evalBVariableRef ctx RS       = liftM hcRS       $ readIORef ctx
+evalBVariableRef ctx RSTART   = liftM hcRSTART   $ readIORef ctx
+evalBVariableRef ctx SUBSEP   = liftM hcSUBSEP   $ readIORef ctx
 
 modBVar :: HawkContext -> BVar -> (Value -> Value) -> Interpreter ()
 {-# INLINE modBVar #-}
-modBVar ctx ARGC     f = modifyIORef' (hcARGC     ctx) f 
-modBVar ctx ARGV     f = modifyIORef' (hcARGV     ctx) f 
-modBVar ctx FILENAME f = modifyIORef' (hcFILENAME ctx) f 
-modBVar ctx FNR      f = modifyIORef' (hcFNR      ctx) f 
-modBVar ctx FS       f = modifyIORef' (hcFS       ctx) f 
-modBVar ctx NF       f = modifyIORef' (hcNF       ctx) f 
-modBVar ctx NR       f = modifyIORef' (hcNR       ctx) f 
-modBVar ctx OFMT     f = modifyIORef' (hcOFMT     ctx) f 
-modBVar ctx OFS      f = modifyIORef' (hcOFS      ctx) f 
-modBVar ctx ORS      f = modifyIORef' (hcORS      ctx) f 
-modBVar ctx RLENGTH  f = modifyIORef' (hcRLENGTH  ctx) f 
-modBVar ctx RS       f = modifyIORef' (hcRS       ctx) f 
-modBVar ctx RSTART   f = modifyIORef' (hcRSTART   ctx) f 
-modBVar ctx SUBSEP   f = modifyIORef' (hcSUBSEP   ctx) f 
+modBVar ctx ARGC     f = modifyIORef' ctx $ \s -> s { hcARGC     = f (hcARGC     s) }
+modBVar ctx ARGV     f = modifyIORef' ctx $ \s -> s { hcARGV     = f (hcARGV     s) }
+modBVar ctx FILENAME f = modifyIORef' ctx $ \s -> s { hcFILENAME = f (hcFILENAME s) }
+modBVar ctx FNR      f = modifyIORef' ctx $ \s -> s { hcFNR      = f (hcFNR      s) }
+modBVar ctx FS       f = modifyIORef' ctx $ \s -> s { hcFS       = f (hcFS       s) }
+modBVar ctx NF       f = modifyIORef' ctx $ \s -> s { hcNF       = f (hcNF       s) }
+modBVar ctx NR       f = modifyIORef' ctx $ \s -> s { hcNR       = f (hcNR       s) }
+modBVar ctx OFMT     f = modifyIORef' ctx $ \s -> s { hcOFMT     = f (hcOFMT     s) }
+modBVar ctx OFS      f = modifyIORef' ctx $ \s -> s { hcOFS      = f (hcOFS      s) }
+modBVar ctx ORS      f = modifyIORef' ctx $ \s -> s { hcORS      = f (hcORS      s) }
+modBVar ctx RLENGTH  f = modifyIORef' ctx $ \s -> s { hcRLENGTH  = f (hcRLENGTH  s) }
+modBVar ctx RS       f = modifyIORef' ctx $ \s -> s { hcRS       = f (hcRS       s) }
+modBVar ctx RSTART   f = modifyIORef' ctx $ \s -> s { hcRSTART   = f (hcRSTART   s) }
+modBVar ctx SUBSEP   f = modifyIORef' ctx $ \s -> s { hcSUBSEP   = f (hcSUBSEP   s) }
 
 
 -- evalFunCall f args = do
