@@ -1,8 +1,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, OverloadedStrings #-}
 
 module Lang.Hawk.Interpreter
-             (Interpreter
-             , HawkContext(..)
+             ( Interpreter
+             , HawkContext
              , HawkContextPure(..)
              , (*!)
              , (*!!)

@@ -3,7 +3,6 @@
 module Lang.Hawk.Scheduler (run) where
 
 import qualified Data.ByteString.Char8 as B
-import qualified Data.Map as M
 import qualified Data.IntMap as IM
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
@@ -22,7 +21,7 @@ import Lang.Hawk.Runtime.Input
 import Control.Concurrent
 
 import System.IO
-import System.IO.Unsafe
+
 import System.Process
 
 import Data.IORef
