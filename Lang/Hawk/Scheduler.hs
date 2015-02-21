@@ -39,8 +39,8 @@ inThread io = do
    takeMVar finish 
 
 data ReaderState = ReaderState
-                 { rNR  :: Integer
-                 , rWID :: Integer
+                 { rNR  :: !Integer
+                 , rWID :: !Integer
                  , rH   :: !Handle
                  , rRS  :: !B.ByteString
                  , rFS  :: !B.ByteString
