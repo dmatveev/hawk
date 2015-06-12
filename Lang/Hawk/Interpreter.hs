@@ -27,11 +27,13 @@ import Lang.Hawk.Value
 import Lang.Hawk.Bytecode (OpCode)
 import Lang.Hawk.Runtime (calcArith, splitIntoFields')
 import Lang.Hawk.Runtime.Input (Record, InputSource)
+import Lang.Hawk.Runtime.Output (Output)
 
 import Data.IORef
 
 data HawkContextPure = HawkContextPure
           { hcInput    :: !InputSource
+          , hcOutput   :: !Output
           , hcWorkload :: ![Record]
 
           , hcFields   :: (IM.IntMap Value)
@@ -66,10 +68,11 @@ data HawkContextPure = HawkContextPure
 
 type HawkContext = IORef HawkContextPure
 
-emptyContext :: [OpCode] -> InputSource -> IO HawkContext
+emptyContext :: [OpCode] -> InputSource -> Output -> IO HawkContext
 {-# INLINE emptyContext #-}
-emptyContext opcodes i = newIORef $! HawkContextPure
+emptyContext opcodes i o = newIORef $! HawkContextPure
            { hcInput    = i
+           , hcOutput   = o
            , hcWorkload = []
 
            , hcFields   = IM.empty

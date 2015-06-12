@@ -17,6 +17,7 @@ import Lang.Hawk.Bytecode.Compiler
 import Lang.Hawk.Bytecode.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
+import Lang.Hawk.Runtime.Output
 
 import Control.Concurrent
 
@@ -101,7 +102,10 @@ run (CompiledSource startup actions finalize) h file = inThread $
    
 executeSync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeSync startup (CompiledSync actions) finalize h file = do
-  ctx <- (fromHandle h) >>= emptyContext startup
+  out <- mkOutput
+  forkIO $ runWriterThread out
+  inp <- fromHandle h
+  ctx <- emptyContext startup inp out
   cont <- runInterpreter wrkInit ctx
   when cont $ do
      modifyIORef' ctx $ \s -> s {hcOPCODES = actions}
@@ -121,7 +125,9 @@ executeIOAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String ->
 executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   q <- newEmptyMVar
   j <- newEmptyMVar
-  ctx <- emptyContext startup $ External q
+  out <- mkOutput
+  forkIO $ runWriterThread out
+  ctx <- emptyContext startup (External q) out
   cont <- runInterpreter wrkInit ctx
   when cont $ do
      cc <- readIORef ctx

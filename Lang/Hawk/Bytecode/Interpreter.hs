@@ -23,6 +23,7 @@ import Lang.Hawk.Value
 import Lang.Hawk.Interpreter
 import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
+import Lang.Hawk.Runtime.Output
 import Lang.Hawk.Runtime.Printf (sprintf)
 
 -- dbg :: [Value] -> OpCode -> Interpreter ()
@@ -122,7 +123,7 @@ funcall ctx (vn:vp:vs:st) Substr  3 = return $ (calcSubstr2 vs vp vn)*:st
 funcall ctx (vr:vs:st)    FMatch  2 = fmatch ctx vs vr >>= \v -> return $ v*:st
 funcall ctx (vl:vs:vr:st) FSub    3 = intFSub calcSub vr vs (toString vl) st
 funcall ctx (vl:vs:vr:st) GSub    3 = intFSub calcGSub vr vs (toString vl) st
-funcall ctx st            Printf  n = intPrintf (reverse $ take n st) >> return ((VDouble 0)*:st) 
+funcall ctx st            Printf  n = intPrintf ctx (reverse $ take n st) >> return ((VDouble 0)*:st) 
 funcall ctx st            SPrintf n = let (rvs,r)  = splitAt n st
                                           (fmt:vs) = reverse rvs
                                       in return $ (valstr $ sprintf (toString fmt) vs)*:r
@@ -191,11 +192,12 @@ fref ctx v = do
    else liftM ((*!! i) . hcFields) $ readIORef ctx
 
 prn :: HawkContext -> [Value] -> Interpreter ()
-prn ctx [] =  (liftM hcThisLine $ readIORef ctx) >>= B.putStrLn
+prn ctx [] = do
+   cc <- readIORef ctx
+   write (hcOutput cc) $ WRqRaw 0 (hcThisLine cc)
 prn ctx vs = do
    cc <- readIORef ctx
-   let str = B.intercalate (toString $ hcOFS cc) $ map toString vs
-   B.putStr $ B.append str (toString $ hcORS cc) 
+   write (hcOutput cc) $ WRqPrint 0 vs (hcOFS cc) (hcORS cc)
 
 fprn :: HawkContext -> FileMod -> [Value] -> Interpreter ()
 fprn ctx m (f:[]) = (liftM hcThisLine $ readIORef ctx) >>= writeToHandle ctx m (toString f)
@@ -381,9 +383,11 @@ intClose ctx name = do
                           return $ VDouble $ -1
            Nothing  -> return $ VDouble $ -1
 
-intPrintf :: [Value] -> Interpreter ()
+intPrintf :: HawkContext -> [Value] -> Interpreter ()
 {-# INLINE intPrintf #-}
-intPrintf (fmt:vs) =  B.putStr $ sprintf (toString fmt) vs
+intPrintf ctx vs = do
+  cc <- readIORef ctx
+  write (hcOutput cc) $ WRqPrintf 0 vs
 
 
 intSRand :: HawkContext -> Interpreter ()
