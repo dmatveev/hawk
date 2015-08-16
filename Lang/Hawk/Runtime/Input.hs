@@ -17,7 +17,8 @@ data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
 data Workload = Workload { wID :: !Integer, wRS :: ![Record] }
                 deriving Show
 
-data InputSource = External !(MVar (Maybe Workload))
+data InputSource = External     !(MVar (Maybe Workload))
+                 | ExternalChan !(Chan (Maybe Workload))
                  | FromHandle !Handle !(IORef B.ByteString) !(IORef Bool)
 
 fromHandle :: Handle -> IO InputSource
@@ -27,7 +28,8 @@ fromHandle h = do
    return $ FromHandle h b e
 
 fetch :: InputSource -> IO (Maybe Workload)
-fetch (External m) = takeMVar m
+fetch (External m)     = takeMVar m
+fetch (ExternalChan c) = readChan c
 
 openInputFile :: B.ByteString -> IO InputSource
 openInputFile f = fromHandle =<< openFile (B.unpack f) ReadMode
@@ -55,7 +57,7 @@ nextLine (FromHandle h rb re) rs = do
                      putStrLn "READR: Done"
 #endif
                      modifyIORef' rb (\tb -> B.append tb nextChunk)
-                     writeIORef   re (B.null nextChunk) 
+                     writeIORef   re (B.null nextChunk)
                      readIter h
                 | otherwise -> do writeIORef rb (B.drop nrs rest)
                                   return $! (Just l)
