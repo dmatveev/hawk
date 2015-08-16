@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Lang.Hawk.Runtime.Input where
 
 import Data.IORef
@@ -32,7 +34,9 @@ openInputFile f = fromHandle =<< openFile (B.unpack f) ReadMode
 
 nextLine :: InputSource -> B.ByteString -> IO (Maybe B.ByteString)
 {-# INLINE nextLine #-}
-nextLine (FromHandle h rb re) rs = readIter h
+nextLine (FromHandle h rb re) rs = do
+   -- putStrLn "READR: Reading next line"
+   readIter h
   where
    readIter h = do
     thisBuf <- readIORef rb
@@ -43,7 +47,13 @@ nextLine (FromHandle h rb re) rs = readIter h
                 |             B.null rest && eof -> do writeIORef rb B.empty
                                                        return $! (Just l)
                 | B.null rest && not eof -> do
+#ifdef TRACE
+                     putStrLn "READR: OK, Getting the next 8K..."
+#endif
                      nextChunk <- B.hGet h 8192
+#ifdef TRACE
+                     putStrLn "READR: Done"
+#endif
                      modifyIORef' rb (\tb -> B.append tb nextChunk)
                      writeIORef   re (B.null nextChunk) 
                      readIter h

@@ -3,13 +3,13 @@
 module Lang.Hawk.Analyzer (Effects,
                            RewriteTable,
                            ExecutionPolicy(..),
-                           analyze, awkPrepare, mkRewriteTable) where
+                           analyze, awkPrepare, mkRewriteTable, copyValues) where
 
-import Data.IORef (IORef, newIORef)
+import Data.IORef
 import Data.List (find)
 import Data.Maybe (isNothing)
 import Control.Applicative (Applicative, (<*>), (<$>), pure)
-import Control.Monad (liftM, when)
+import Control.Monad (forM_, liftM, when)
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import qualified Data.Map.Strict as M
@@ -262,6 +262,11 @@ mkRewriteTable efs =
     <$> (liftM M.fromList $ mapM (mkRef $ VDouble 0) (map fst $ M.toList $ eVars efs))
     <*> (liftM M.fromList $ mapM (mkRef $ M.empty)   (S.toList $ eArrays efs))
  where mkRef a s = (s,) <$> newIORef a
+
+copyValues :: RewriteTable -> RewriteTable -> IO ()
+copyValues (RewriteTable varsFrom arrsFrom) (RewriteTable varsTo arrsTo) = do
+  forM_ (M.toList varsFrom) $ \(k, v) -> readIORef v >>= writeIORef (varsTo M.! k)
+  forM_ (M.toList arrsFrom) $ \(k, a) -> readIORef a >>= writeIORef (arrsTo M.! k)
 
 type Rewrite a = Reader RewriteTable a
 

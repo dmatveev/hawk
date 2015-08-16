@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Lang.Hawk.Bytecode.Interpreter
        ( wrkInit
        , wrkLoop
@@ -32,7 +34,7 @@ import Lang.Hawk.Runtime.Printf (sprintf)
 --    let opStr = show op
 --        opLen = length opStr
 --        spc   = take (50 - opLen) $ repeat ' '
---    liftIO $ putStrLn $ opStr ++ spc ++ show st 
+--    liftIO $ putStrLn $ opStr ++ spc ++ show st
 
 (*:) :: a -> [a] -> [a]
 {-# INLINE (*:) #-}
@@ -83,14 +85,14 @@ bc ctx st         (GETLV r)  = {-# SCC "GETLV" #-} getlineV  ctx r     >>= \v ->
 bc ctx (top:st)   FGETL      = {-# SCC "FGETL" #-} fgetline  ctx top   >>= \v -> return $ v*:st
 bc ctx (top:st)   (FGETLV r) = {-# SCC "FGETLV"#-} fgetlineV ctx r top >>= \v -> return $ v*:st
 bc ctx (top:st)   PGETL      = {-# SCC "PGETL" #-} pgetline  ctx top   >>= \v -> return $ v*:st
-bc ctx (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV ctx r top >>= \v -> return $ v*:st 
+bc ctx (top:st)   (PGETLV r) = {-# SCC "PGETLV"#-} pgetlineV ctx r top >>= \v -> return $ v*:st
 bc ctx st         op         = (putStrLn $ "UNKNOWN COMMAND") >> return st
 
-execBC' :: HawkContext -> [OpCode] -> Interpreter (Bool, [Value]) 
+execBC' :: HawkContext -> [OpCode] -> Interpreter (Bool, [Value])
 {-# INLINE execBC' #-}
 execBC' ctx src = execBC ctx src [] src
 
-execBC :: HawkContext -> [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value]) 
+execBC :: HawkContext -> [OpCode] -> [Value] -> [OpCode] -> Interpreter (Bool, [Value])
 execBC ctx src st         []             = return (True, st)
 execBC ctx src st         (op@EX:_)      = {-# SCC "EX"  #-} return (False, st)
 execBC ctx src st         (op@NXT:_)     = {-# SCC "NXT" #-} return (True, st)
@@ -123,7 +125,7 @@ funcall ctx (vn:vp:vs:st) Substr  3 = return $ (calcSubstr2 vs vp vn)*:st
 funcall ctx (vr:vs:st)    FMatch  2 = fmatch ctx vs vr >>= \v -> return $ v*:st
 funcall ctx (vl:vs:vr:st) FSub    3 = intFSub calcSub vr vs (toString vl) st
 funcall ctx (vl:vs:vr:st) GSub    3 = intFSub calcGSub vr vs (toString vl) st
-funcall ctx st            Printf  n = intPrintf ctx (reverse $ take n st) >> return ((VDouble 0)*:st) 
+funcall ctx st            Printf  n = intPrintf ctx (reverse $ take n st) >> return ((VDouble 0)*:st)
 funcall ctx st            SPrintf n = let (rvs,r)  = splitAt n st
                                           (fmt:vs) = reverse rvs
                                       in return $ (valstr $ sprintf (toString fmt) vs)*:r
@@ -186,7 +188,7 @@ anxt ctx r = do
 fref :: HawkContext -> Value -> Interpreter Value
 {-# INLINE fref #-}
 fref ctx v = do
-   let i = toInt v 
+   let i = toInt v
    if i == 0
    then (liftM hcThisLine $ readIORef ctx) >>= (return . valstr)
    else liftM ((*!! i) . hcFields) $ readIORef ctx
@@ -194,10 +196,10 @@ fref ctx v = do
 prn :: HawkContext -> [Value] -> Interpreter ()
 prn ctx [] = do
    cc <- readIORef ctx
-   write (hcOutput cc) $ WRqRaw 0 (hcThisLine cc)
+   write (hcOutput cc) (hcWID cc) $ WRqRaw (hcThisLine cc)
 prn ctx vs = do
    cc <- readIORef ctx
-   write (hcOutput cc) $ WRqPrint 0 vs (hcOFS cc) (hcORS cc)
+   write (hcOutput cc) (hcWID cc) $ WRqPrint vs (hcOFS cc) (hcORS cc)
 
 fprn :: HawkContext -> FileMod -> [Value] -> Interpreter ()
 fprn ctx m (f:[]) = (liftM hcThisLine $ readIORef ctx) >>= writeToHandle ctx m (toString f)
@@ -228,7 +230,7 @@ writeToProcess ctx f str = do
 intGetHandle :: HawkContext -> B.ByteString -> FileMod -> Interpreter Handle
 intGetHandle ctx f m = do
    mh <- liftM (M.lookup f . hcHandles) $ readIORef ctx
-   case mh of 
+   case mh of
      Just h  -> return h
      Nothing -> do h <- openFile (B.unpack f) (toMode m)
                    modifyIORef' ctx $ \s -> s { hcHandles = M.insert f h (hcHandles s)}
@@ -237,7 +239,7 @@ intGetHandle ctx f m = do
 intGetProcessHandle :: HawkContext -> B.ByteString -> Interpreter Handle
 intGetProcessHandle ctx cmd = do
    mh <- liftM (M.lookup cmd . hcPHandles) $ readIORef ctx
-   case mh of 
+   case mh of
      Just (_,h) -> return h
      Nothing    -> do
        (Just hin, _, _, ph) <- createProcess $ (shell cmd') {std_in = CreatePipe}
@@ -269,7 +271,7 @@ getline ctx = do
                  case mw of
                     Nothing                  -> return $ VDouble $! -1
                     Just (Workload _ (r:rs)) -> handleRecord r rs
-        (r:rs) -> handleRecord r rs 
+        (r:rs) -> handleRecord r rs
  where handleRecord r rs = setupContext ctx r rs >> return (VDouble $! 1)
 
 getlineV :: HawkContext -> (IORef Value) -> Interpreter Value
@@ -280,7 +282,7 @@ getlineV ctx ref = do
                  case mw of
                     Nothing                  -> return $ VDouble $! -1
                     Just (Workload _ (r:rs)) -> handleRecord r rs
-        (r:rs) -> handleRecord r rs 
+        (r:rs) -> handleRecord r rs
  where handleRecord (Record _ l nf flds) rs = do
          writeIORef ref (valstr l)
          modifyIORef' ctx $ \s -> s
@@ -316,9 +318,9 @@ fgetlineV ctx r vf = do
                      return $ VDouble 1
 
 fGetInput :: HawkContext -> B.ByteString -> Interpreter InputSource
-fGetInput ctx f = do 
+fGetInput ctx f = do
    mi <- liftM (M.lookup f . hcFInputs) $ readIORef ctx
-   case mi of 
+   case mi of
      Just is  -> return is
      Nothing  -> do is <- openInputFile f
                     modifyIORef' ctx $ \s -> s { hcFInputs = M.insert f is (hcFInputs s)}
@@ -349,7 +351,7 @@ pgetlineV ctx r vcmd = do
    case ml of
       Nothing  -> return $ VDouble $ -1
       (Just l) -> do writeIORef r (valstr l)
-                     return $ VDouble 1 
+                     return $ VDouble 1
 
 intPopen :: HawkContext -> B.ByteString -> Interpreter (ProcessHandle, InputSource)
 intPopen ctx cmd = do
@@ -387,7 +389,7 @@ intPrintf :: HawkContext -> [Value] -> Interpreter ()
 {-# INLINE intPrintf #-}
 intPrintf ctx vs = do
   cc <- readIORef ctx
-  write (hcOutput cc) $ WRqPrintf 0 vs
+  write (hcOutput cc) (hcWID cc) $ WRqPrintf vs
 
 
 intSRand :: HawkContext -> Interpreter ()
@@ -409,14 +411,25 @@ wrkInit :: HawkContext -> Interpreter Bool
 {-# INLINE wrkInit #-}
 wrkInit ctx = liftM fst $ (liftM hcOPCODES $ readIORef ctx) >>= execBC' ctx
 
-wrkLoop :: HawkContext -> Interpreter ()        
+wrkLoop :: HawkContext -> Interpreter ()
 {-# INLINE wrkLoop #-}
 wrkLoop ctx = do
+#ifdef TRACE
+   putStrLn "INTRP: Waiting for data..."
+#endif
    q <- (liftM hcInput $ readIORef ctx) >>= fetch
    case q of
-      Nothing  -> return ()
-      (Just w) -> do modifyIORef' ctx $ \s -> s {hcWorkload = wRS w}
-                     wrkProc ctx >>= \cont -> when cont $ wrkLoop ctx
+      Nothing  -> do
+#ifdef TRACE
+        putStrLn "INTRP: Nothing to process"
+#endif
+        return ()
+      (Just w) -> do
+#ifdef TRACE
+        putStrLn "INTRP: Processing next workload"
+#endif
+        modifyIORef' ctx $ \s -> s {hcWorkload = wRS w, hcWID = wID w}
+        wrkProc ctx >>= \cont -> when cont $ wrkLoop ctx
 
 wrkProcessLine :: HawkContext -> B.ByteString -> Interpreter Bool
 {-# INLINE wrkProcessLine #-}
@@ -431,7 +444,7 @@ wrkProcessLine ctx l = do
      , hcFNR      = VDouble (succ $ toDouble $ hcFNR s)
      }
    liftM fst $ (liftM hcOPCODES $ readIORef ctx) >>= execBC' ctx
-   
+
 wrkProc :: HawkContext -> Interpreter Bool
 {-# INLINE wrkProc #-}
 wrkProc ctx = do
@@ -441,7 +454,7 @@ wrkProc ctx = do
      (r:rs) -> do
         setupContext ctx r rs
         (cont, _) <- (liftM hcOPCODES $ readIORef ctx) >>= execBC' ctx
-        if cont then wrkProc ctx else return False 
+        if cont then wrkProc ctx else return False
 
 wrkFinish :: HawkContext -> Interpreter ()
 {-# INLINE wrkFinish #-}
