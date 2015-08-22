@@ -15,14 +15,14 @@ import qualified Data.ByteString.Char8 as B
 import Lang.Hawk.Value
 import Lang.Hawk.Runtime.Printf
 
-data WriteRequest = WRqPrint  [Value] Value Value
-                  | WRqPrintf [Value]
-                  | WRqRaw    B.ByteString
+data WriteRequest = WRqPrint  ![Value] !Value !Value
+                  | WRqPrintf ![Value]
+                  | WRqRaw    !B.ByteString
                     deriving (Eq, Show)
 
 data Bulk = Bulk
-            { blkID  :: Integer
-            , blkRQs :: [WriteRequest]
+            { blkID  :: !Integer
+            , blkRQs :: ![WriteRequest]
             }
           | Shutdown
             deriving (Eq, Show)
@@ -92,8 +92,8 @@ serialWriter expected queue chan = do
 -- according to the workload ID. It is designed especially for
 -- the parallel case (when there are multiple interpreter threads
 -- working on different portions of data).
-data Output = FastOutput WriterChan
-            | SerialOutput Integer [Bulk] WriterChan
+data Output = FastOutput !WriterChan
+            | SerialOutput !Integer ![Bulk] !WriterChan
 
 runWriterThread :: Output -> IO ()
 runWriterThread (FastOutput c)         = fastWriter c
