@@ -196,10 +196,10 @@ fref ctx v = do
 prn :: HawkContext -> [Value] -> Interpreter ()
 prn ctx [] = do
    cc <- readIORef ctx
-   write (hcOutput cc) (hcWID cc) $ WRqRaw (hcThisLine cc)
+   write (hcOutput cc) (hcWID cc) $ Just $ WRqRaw (hcThisLine cc)
 prn ctx vs = do
    cc <- readIORef ctx
-   write (hcOutput cc) (hcWID cc) $ WRqPrint vs (hcOFS cc) (hcORS cc)
+   write (hcOutput cc) (hcWID cc) $ Just $ WRqPrint vs (hcOFS cc) (hcORS cc)
 
 fprn :: HawkContext -> FileMod -> [Value] -> Interpreter ()
 fprn ctx m (f:[]) = (liftM hcThisLine $ readIORef ctx) >>= writeToHandle ctx m (toString f)
@@ -389,7 +389,7 @@ intPrintf :: HawkContext -> [Value] -> Interpreter ()
 {-# INLINE intPrintf #-}
 intPrintf ctx vs = do
   cc <- readIORef ctx
-  write (hcOutput cc) (hcWID cc) $ WRqPrintf vs
+  write (hcOutput cc) (hcWID cc) $ Just $ WRqPrintf vs
 
 
 intSRand :: HawkContext -> Interpreter ()
@@ -429,7 +429,10 @@ wrkLoop ctx = do
         putStrLn "INTRP: Processing next workload"
 #endif
         modifyIORef' ctx $ \s -> s {hcWorkload = wRS w, hcWID = wID w}
-        wrkProc ctx >>= \cont -> when cont $ wrkLoop ctx
+        wrkProc ctx >>= \cont -> do
+          out <- liftM hcOutput $ readIORef ctx
+          write out (wID w) Nothing
+          when cont $ wrkLoop ctx
 
 wrkProcessLine :: HawkContext -> B.ByteString -> Interpreter Bool
 {-# INLINE wrkProcessLine #-}

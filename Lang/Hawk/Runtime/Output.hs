@@ -24,6 +24,7 @@ data Bulk = Bulk
             { blkID  :: Integer
             , blkRQs :: [WriteRequest]
             }
+          | Shutdown
             deriving (Eq, Show)
 
 instance Ord Bulk where
@@ -52,26 +53,29 @@ takeSerial expected blks =
 
 fastWriter :: WriterChan -> IO ()
 fastWriter chan = do
-  (Bulk _ rqs)  <- readChan chan
-  case rqs of
-   []        -> return ()
-   otherwise -> B.putStr (formatBuffer rqs) >> fastWriter chan
+  msg <- readChan chan
+  case msg of
+   Shutdown     -> return ()
+   (Bulk _ rqs) -> do
+     when (not $ null rqs) $ B.putStr (formatBuffer rqs)
+     fastWriter chan
 
 
 serialWriter :: Integer -> [Bulk] -> WriterChan -> IO ()
 serialWriter expected queue chan = do
-  p@(Bulk i rqs) <- readChan chan
-  case rqs of
-    []        -> return ()
-    otherwise -> do
+  msg <- readChan chan
+  case msg of
+   Shutdown -> return ()
+   p@(Bulk i rqs) -> do
 #ifdef TRACE
-      putStrLn $ "OUTPT: Got something (" ++ show i ++ "), expected " ++ show expected
+     putStrLn $ "OUTPT: Got something (" ++ show i ++ "), expected " ++ show expected
 #endif
      if i /= expected
      then serialWriter expected (insert p queue) chan
      else do let (ready, pending) = takeSerial (succ i) queue
-             B.putStr $ formatBuffer $ rqs ++ concat (map blkRQs ready)
-             let newExpected = succ $ if null ready then i else (blkID $ last ready)
+                 pendingRqs       = rqs ++ concat (map blkRQs ready)
+                 newExpected      = succ $ if null ready then i else (blkID $ last ready)
+             when (not $ null pendingRqs) $ B.putStr $ formatBuffer pendingRqs
              serialWriter newExpected pending chan
 
 -- | Server part of the output system. Processes write requests
@@ -102,8 +106,8 @@ mkSerialOutput :: IO Output
 mkSerialOutput = SerialOutput <$> pure 0 <*> pure [] <*> newChan
 
 closeOutput :: Output -> IO ()
-closeOutput (FastOutput c)       = writeChan c (Bulk (-1) [])
-closeOutput (SerialOutput _ _ c) = writeChan c (Bulk (-1) [])
+closeOutput (FastOutput c)       = writeChan c Shutdown
+closeOutput (SerialOutput _ _ c) = writeChan c Shutdown
 
 -- | Client part of the system - actually used by interpreter(s)
 -- during AWK program execution. Clients use this API to enqueue
@@ -125,14 +129,16 @@ mkNonBufferedSink :: Output -> IO OutputSink
 mkNonBufferedSink (FastOutput c)       = NonBufferedSink <$> pure c
 mkNonBufferedSink (SerialOutput _ _ c) = NonBufferedSink <$> pure c
 
-write :: OutputSink -> Integer -> WriteRequest -> IO ()
-write (BufferedSink s c) i w = do
+write :: OutputSink -> Integer -> Maybe WriteRequest -> IO ()
+write (BufferedSink s c) i mw = do
   (Bulk wid queue) <- readIORef s
+  let thisQueue = maybe []    (:[])    mw
+      newQueue  = maybe queue (:queue) mw
   if wid /= i
-  then do writeIORef s (Bulk i [w])
+  then do writeIORef s (Bulk i thisQueue)
           when (wid /= -1) $ writeChan c $ Bulk wid (reverse queue)
-  else writeIORef s (Bulk i $ w:queue)
-write (NonBufferedSink c) i w = writeChan c $ Bulk i [w]
+  else writeIORef s (Bulk i newQueue)
+write (NonBufferedSink c) i mw = writeChan c $ Bulk i $ maybe [] (:[]) mw
 
 
 flush :: OutputSink -> IO ()
