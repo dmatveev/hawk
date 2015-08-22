@@ -8,6 +8,7 @@ module Lang.Hawk.Runtime.Reader
 
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Concurrent
+import Control.Exception (evaluate)
 import Control.Monad (replicateM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State.Strict
@@ -26,7 +27,7 @@ data ReaderState = ReaderState
                  , rH   :: !Handle
                  , rRS  :: !B.ByteString
                  , rFS  :: !B.ByteString
-                 , rQ   :: !(MVar (Maybe Workload))
+                 , rQ   :: !InputSink
                  , rTmp :: ![Record]
                  }
 
@@ -40,10 +41,12 @@ sendWorkload = do
 #ifdef TRACE
             liftIO $ putStrLn $ "Sending workload " ++ show (wID w)
 #endif
-            gets rQ >>= (liftIO . flip putMVar (Just w))
+            liftIO $ evaluate w
+            gets rQ >>= (liftIO . flip supply (Just w))
             modify $ \s -> s { rTmp = [] }
     else do qq <- gets rQ
-            liftIO $ replicateM_ 4 $ putMVar qq Nothing
+            -- TODO: Hard-coded number of client threads
+            liftIO $ replicateM_ 4 $ supply qq Nothing
   where nextWID = modify (\s -> s { rWID = succ (rWID s)}) >> gets rWID
 
 enqueue :: B.ByteString -> ReaderThread ()

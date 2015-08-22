@@ -17,6 +17,14 @@ data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
 data Workload = Workload { wID :: !Integer, wRS :: ![Record] }
                 deriving Show
 
+data InputSink = MVarSink !(MVar (Maybe Workload))
+               | ChanSink !(Chan (Maybe Workload))
+
+supply :: InputSink -> (Maybe Workload) -> IO ()
+supply (MVarSink m) mw = putMVar   m mw
+supply (ChanSink c) mw = writeChan c mw
+
+
 data InputSource = External     !(MVar (Maybe Workload))
                  | ExternalChan !(Chan (Maybe Workload))
                  | FromHandle !Handle !(IORef B.ByteString) !(IORef Bool)

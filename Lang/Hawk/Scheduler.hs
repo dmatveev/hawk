@@ -81,7 +81,7 @@ executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
   cont <- runInterpreter wrkInit ctx
   when cont $ do
      cc <- readIORef ctx
-     forkIO $ runReaderThread reader h (toString $ hcRS cc) (toString $ hcFS cc) q
+     forkIO $ runReaderThread reader h (toString $ hcRS cc) (toString $ hcFS cc) (MVarSink q)
      modifyIORef' ctx $ \s -> s {hcOPCODES = actions}
      runInterpreter wrkLoop $ ctx
      flush outSink
@@ -105,7 +105,7 @@ executeFullAsync startup (CompiledFullAsync rt rts nactions) finalize h file = d
   cont    <- runInterpreter wrkInit ctx
   when cont $ do
     cc    <- readIORef ctx
-    forkIO $ runReaderThread reader h (toString $ hcRS cc) (toString $ hcFS cc) q
+    forkIO $ runReaderThread reader h (toString $ hcRS cc) (toString $ hcFS cc) (MVarSink q)
     mvrs  <- forM (zip rts nactions) $ \(rt', actions) -> do
       copyValues rt rt'
       outSink' <- mkBufferedSink out
