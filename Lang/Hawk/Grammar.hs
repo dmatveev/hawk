@@ -1,4 +1,12 @@
- module Lang.Hawk.Grammar (awk, setVar) where
+ module Lang.Hawk.Grammar
+        ( -- These top-level parsers are actually used by an applicatoin
+          awk
+        , setVar
+
+          -- These ones are exported for tests
+        , literal
+        , pattern
+        ) where
 
 import qualified Data.ByteString.Char8 as B
 import Data.Char (isSpace)
