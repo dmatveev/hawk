@@ -10,6 +10,7 @@ import Control.Concurrent
 import System.IO
 
 import Lang.Hawk.Value
+import qualified Lang.Hawk.Runtime.Queue as Q
 
 data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
                 deriving Show
@@ -17,16 +18,18 @@ data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
 data Workload = Workload { wID :: !Integer, wRS :: ![Record] }
                 deriving Show
 
-data InputSink = MVarSink !(MVar (Maybe Workload))
-               | ChanSink !(Chan (Maybe Workload))
+data InputSink = MVarSink !(MVar    (Maybe Workload))
+               | ChanSink !(Chan    (Maybe Workload))
+               | QSink    !(Q.Queue (Maybe Workload))
 
 supply :: InputSink -> (Maybe Workload) -> IO ()
 supply (MVarSink m) mw = putMVar   m mw
 supply (ChanSink c) mw = writeChan c mw
+supply (QSink    q) mw = Q.enqueue q mw
 
-
-data InputSource = External     !(MVar (Maybe Workload))
-                 | ExternalChan !(Chan (Maybe Workload))
+data InputSource = External     !(MVar    (Maybe Workload))
+                 | ExternalChan !(Chan    (Maybe Workload))
+                 | ExternalQ    !(Q.Queue (Maybe Workload))
                  | FromHandle !Handle !(IORef B.ByteString) !(IORef Bool)
 
 fromHandle :: Handle -> IO InputSource
@@ -38,6 +41,7 @@ fromHandle h = do
 fetch :: InputSource -> IO (Maybe Workload)
 fetch (External m)     = takeMVar m
 fetch (ExternalChan c) = readChan c
+fetch (ExternalQ q)    = Q.dequeue q
 
 openInputFile :: B.ByteString -> IO InputSource
 openInputFile f = fromHandle =<< openFile (B.unpack f) ReadMode

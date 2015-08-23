@@ -19,6 +19,7 @@ import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
 import Lang.Hawk.Runtime.Reader
 import Lang.Hawk.Runtime.Output
+import qualified Lang.Hawk.Runtime.Queue as Q
 
 import Control.Concurrent
 
