@@ -21,6 +21,8 @@ import Lang.Hawk.Runtime
 import Lang.Hawk.Runtime.Input
 import Lang.Hawk.Value
 
+#include "Hawk.h"
+
 data ReaderState = ReaderState
                  { rNR  :: !Integer
                  , rWID :: !Integer
@@ -38,9 +40,7 @@ sendWorkload = do
     tmp <- gets rTmp
     if (not $ null tmp)
     then do w <- Workload <$> nextWID <*> (pure $ reverse tmp)
-#ifdef TRACE
-            liftIO $ putStrLn $ "Sending workload " ++ show (wID w)
-#endif
+            LOG("Sending workload " ++ show (wID w))
             liftIO $ evaluate w
             gets rQ >>= (liftIO . flip supply (Just w))
             modify $ \s -> s { rTmp = [] }

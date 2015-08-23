@@ -15,6 +15,8 @@ import qualified Data.ByteString.Char8 as B
 import Lang.Hawk.Value
 import Lang.Hawk.Runtime.Printf
 
+#include "Hawk.h"
+
 data WriteRequest = WRqPrint  ![Value] !Value !Value
                   | WRqPrintf ![Value]
                   | WRqRaw    !B.ByteString
@@ -67,9 +69,7 @@ serialWriter expected queue chan = do
   case msg of
    Shutdown -> return ()
    p@(Bulk i rqs) -> do
-#ifdef TRACE
-     putStrLn $ "OUTPT: Got something (" ++ show i ++ "), expected " ++ show expected
-#endif
+     LOG("OUTPT: Got something (" ++ show i ++ "), expected " ++ show expected)
      if i /= expected
      then serialWriter expected (insert p queue) chan
      else do let (ready, pending) = takeSerial (succ i) queue

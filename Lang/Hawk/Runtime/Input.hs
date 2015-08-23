@@ -12,6 +12,8 @@ import System.IO
 import Lang.Hawk.Value
 import qualified Lang.Hawk.Runtime.Queue as Q
 
+#include "Hawk.h"
+
 data Record   = Record !Integer !B.ByteString !Int !(IM.IntMap Value)
                 deriving Show
 
@@ -61,13 +63,9 @@ nextLine (FromHandle h rb re) rs = do
                 |             B.null rest && eof -> do writeIORef rb B.empty
                                                        return $! (Just l)
                 | B.null rest && not eof -> do
-#ifdef TRACE
-                     putStrLn "READR: OK, Getting the next 8K..."
-#endif
+                     LOG("READR: OK, Getting the next 8K...")
                      nextChunk <- B.hGet h 8192
-#ifdef TRACE
-                     putStrLn "READR: Done"
-#endif
+                     LOG("READR: Done")
                      modifyIORef' rb (\tb -> B.append tb nextChunk)
                      writeIORef   re (B.null nextChunk)
                      readIter h

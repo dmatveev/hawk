@@ -62,7 +62,9 @@ executable hawk
   -- Other library packages from which modules are imported.
   build-depends:       base >=4.6 && <4.8, containers >=0.5 && <0.6, mtl, parsec >=3.1 && <3.2, transformers >=0.4 && <0.5, attoparsec >=0.12 && <0.14, bytestring >=0.10 && <0.11, regex-pcre-builtin >=0.94 && <0.95, random >=1.1 && <1.2, process >=1.1 && <1.3, optparse-applicative, stm, array
 
-  ghc-options: -O2 -funbox-strict-fields -fllvm -threaded
+  ghc-options: -O2 -funbox-strict-fields -fllvm -threaded -rtsopts
+
+  include-dirs: .
 
   -- Directories containing source files.
   -- hs-source-dirs:      

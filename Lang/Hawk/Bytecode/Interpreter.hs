@@ -28,6 +28,8 @@ import Lang.Hawk.Runtime.Input
 import Lang.Hawk.Runtime.Output
 import Lang.Hawk.Runtime.Printf (sprintf)
 
+#include "Hawk.h"
+
 -- dbg :: [Value] -> OpCode -> Interpreter ()
 -- {-# INLINE dbg #-}
 -- dbg st op = do
@@ -414,20 +416,14 @@ wrkInit ctx = liftM fst $ (liftM hcOPCODES $ readIORef ctx) >>= execBC' ctx
 wrkLoop :: HawkContext -> Interpreter ()
 {-# INLINE wrkLoop #-}
 wrkLoop ctx = do
-#ifdef TRACE
-   putStrLn "INTRP: Waiting for data..."
-#endif
+   LOG("INTRP: Waiting for data...")
    q <- (liftM hcInput $ readIORef ctx) >>= fetch
    case q of
       Nothing  -> do
-#ifdef TRACE
-        putStrLn "INTRP: Nothing to process"
-#endif
+        LOG("INTRP: Nothing to process")
         return ()
       (Just w) -> do
-#ifdef TRACE
-        putStrLn "INTRP: Processing next workload"
-#endif
+        LOG("INTRP: Processing next workload")
         modifyIORef' ctx $ \s -> s {hcWorkload = wRS w, hcWID = wID w}
         wrkProc ctx >>= \cont -> do
           out <- liftM hcOutput $ readIORef ctx

@@ -28,6 +28,8 @@ import System.Process
 
 import Data.IORef
 
+#include "Hawk.h"
+
 -- In the simplest case, we have two threads:
 -- READER - reads the input, parses lines and fields
 -- WORKER - takes data from reader, executes the AWK code 
@@ -94,9 +96,7 @@ executeIOAsync startup (CompiledIOAsync actions) finalize h file = do
  
 executeFullAsync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeFullAsync startup (CompiledFullAsync rt rts nactions) finalize h file = do
-#ifdef TRACE
-  putStrLn $ "SCHED: FULL ASYNC GO!"
-#endif
+  LOG("SCHED: FULL ASYNC GO!")
   out     <- mkSerialOutput
   outSink <- mkNonBufferedSink out
   outSync <- newEmptyMVar
@@ -113,16 +113,12 @@ executeFullAsync startup (CompiledFullAsync rt rts nactions) finalize h file = d
       ctx' <- newIORef $ cc { hcOPCODES = actions, hcOutput = outSink' }
       mvr  <- newEmptyMVar
       forkOS $ do
-#ifdef TRACE
-        putStrLn "SCHED: Launching a new thread..."
-#endif
+        LOG("SCHED: Launching a new thread...")
         runInterpreter wrkLoop ctx'
         flush outSink'
         putMVar mvr ()
       return mvr
-#ifdef TRACE
-    putStrLn "SCHED: Waiting for completion..."
-#endif
+    LOG("SCHED: Waiting for completion...")
     mapM_ takeMVar mvrs
     -- TODO: find the thread which processed the last workload, copy variable data from there
   modifyIORef' ctx $ \s -> s {hcOPCODES = finalize}
