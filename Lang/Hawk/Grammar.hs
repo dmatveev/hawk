@@ -6,6 +6,12 @@
           -- These ones are exported for tests
         , literal
         , pattern
+        , variableRef
+        , builtInVars
+        , hawkBuiltinVars
+        , fieldRef
+
+        , expr
         ) where
 
 import qualified Data.ByteString.Char8 as B
