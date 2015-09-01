@@ -1,10 +1,9 @@
-import Test.Framework (Test, defaultMain)
-
+import Test.Tasty
 
 import Parser
 
 main :: IO ()
 main = defaultMain tests
 
-tests :: [Test]
-tests = [ parser ]
+tests :: TestTree
+tests = testGroup "Hawk tests" [ parser ]

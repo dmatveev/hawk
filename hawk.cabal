@@ -86,8 +86,8 @@ test-suite tests
   build-depends:
     HUnit,
     base,
-    test-framework,
-    test-framework-hunit,
+    tasty,
+    tasty-hunit,
     parsec,
     bytestring,
     mtl,
