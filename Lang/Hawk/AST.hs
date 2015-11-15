@@ -9,6 +9,7 @@ data Expression = Arith ArithOp Expression Expression
                 | FieldRef Expression
                 | VariableRef String
                 | ArrayRef String Expression
+                | ArrayIdx [Expression]
                 | BuiltInVar BVar
                 | Assignment ArithOp Expression Expression
                 | Incr Notation Expression

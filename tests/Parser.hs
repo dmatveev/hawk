@@ -21,18 +21,19 @@ p pp s = case parse pp "" s of
   (Left e)  -> error $ show e
   (Right a) -> a
 
-data ParseResult = ParseError | ParseSuccess deriving (Eq, Show)
+data ParseResult a = ParseError | ParseSuccess a deriving (Eq, Show)
 
-pr :: Parser a -> String -> ParseResult
+pr :: Parser a -> String -> ParseResult a
 pr pp s = case parse pp "" s of
   (Left _)  -> ParseError
-  (Right _) -> ParseSuccess
+  (Right a) -> ParseSuccess a
 
 parser :: TestTree
 parser =  testGroup "Parser"
     [ testPatterns
     , testExpressions
     , testControlFlow
+    , testArrays
     ]
 
 ------------------------------------------------------------
@@ -280,3 +281,76 @@ testCFKeywords = testGroup "Keywords"
     , testCase "exit 1"     $ p statement "exit 1"     @?= EXIT (Just $ cln 1)
     , testCase "exit (a+b)" $ p statement "exit (a+b)" @?= EXIT (Just $ (Arith Add (VariableRef "a") (VariableRef "b")))
     ]
+
+
+------------------------------------------------------------
+--
+-- Arrays group
+--
+testArrays :: TestTree
+testArrays = testGroup "Arrays"
+    [ testArrAccess
+    , testArrMembership
+    , testForEach
+    , testDelete
+    ]
+
+testArrAccess :: TestTree
+testArrAccess = testGroup "Array access"
+    [ testCase "a[1]"             $ p expr "a[1]"     @?=
+          ArrayRef "a" (cln 1)
+    , testCase "a[b]"             $ p expr "a[b]"     @?=
+          ArrayRef "a" (VariableRef "b")
+    , testCase "a[b+1]"           $ p expr "a[b+1]"   @?=
+          ArrayRef "a" (Arith Add (VariableRef "b") (cln 1))
+    , testCase "a[b[c]]"          $ p expr "a[b[c]]"  @?=
+          ArrayRef "a" (ArrayRef "b" (VariableRef "c"))
+    -- , testCase "a[i,j]"        $ p expr "a[i,j]"   @?= ???? TODO
+    , testCase "a[b]++"           $ p expr "a[b]++"   @?=
+          Incr Post (ArrayRef "a" (VariableRef "b"))
+    , testCase "++a[b]"           $ p expr "++a[b]"   @?=
+          Incr Pre  (ArrayRef "a" (VariableRef "b"))
+    , testCase "a[b] = c"         $ p expr "a[b] = c" @?=
+          Assignment Set (ArrayRef "a" (VariableRef ("b"))) (VariableRef "c")
+    ]
+
+testArrMembership :: TestTree
+testArrMembership = testGroup "Array membership"
+    [ testCase "a in b"           $ p  expr "a in b"     @?=
+          In (VariableRef "a") (VariableRef "b")
+    , testCase "1 in b"           $ p  expr "1 in b"     @?=
+          In (cln 1) (VariableRef "b")
+    , testCase "b in 1"           $ pr expr "b in 1"     @?=
+          ParseError
+    , testCase "(a+1) in b"       $ p  expr "(a+1) in b" @?=
+          In (Arith Add (VariableRef "a") (cln 1)) (VariableRef "b")
+    , testCase "b in (a+1)"       $ pr expr "b in (a+1)" @?=
+          ParseError
+    ]
+
+testForEach :: TestTree
+testForEach = testGroup "Array iteration"
+    [ testCase "for (a in b) ++b[a]"     $ p statement "for (a in b) ++b[a]"     @?=
+          FOREACH (VariableRef "a")
+                  "b"
+                  (Expression $ Incr Pre (ArrayRef "b" (VariableRef "a")))
+    , testCase "for (a in b) { b[a]-- }" $ p statement "for (a in b) { b[a]-- }" @?=
+          FOREACH (VariableRef "a")
+                  "b"
+                  (Block [ Expression $ Decr Post (ArrayRef "b" (VariableRef "a"))])
+    , testCase "for (a in b) ;"          $ p statement "for (a in b) ;"          @?=
+          FOREACH (VariableRef "a")
+                  "b"
+                  NOP
+    ]
+
+testDelete :: TestTree
+testDelete = testGroup "Deleting elements"
+    [ testCase "delete a[1]"   $ p  statement "delete a[1]"   @?=
+          DELETE (ArrayRef "a" (cln 1))
+    , testCase "delete a[1+2]" $ p  statement "delete a[1+2]" @?=
+          DELETE (ArrayRef "a" (Arith Add (cln 1) (cln 2)))
+    , testCase "delete a"      $ pr statement "delete a"      @?=
+          ParseError
+    ]
+
