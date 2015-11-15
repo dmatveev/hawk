@@ -43,6 +43,14 @@ testExpressions = testGroup "Expressions"
     , testStringLiterals
     , testVariables
     , testAssignments
+    , testArithOp
+    , testCmpOp
+    , testMatchOp
+    , testLogicOp
+    , testConditionalOp
+    , testIncDec
+    , testBuiltinFuncArith
+    , testConcat
     ]
 
 testNumericLiterals :: TestTree
@@ -102,4 +110,60 @@ testAssignments = testGroup "Assignments"
     , testCase "x^= 1"       $ p expr "x^= 1"        @?= Assignment Pow (VariableRef "x")  (cln 1)
     , testCase "FS =\"\\t\"" $ p expr "FS=\"\\t\""   @?= Assignment Set (BuiltInVar FS)    (cls "\t")
     , testCase "$3 = \"foo\""$ p expr "$3 = \"foo\"" @?= Assignment Set (FieldRef (cln 3)) (cls "foo")
+    ]
+
+testArithOp :: TestTree
+testArithOp = testGroup "Arithmetic" $ map mkTest arithOps
+  where mkTest (op, tag) = let str = "a " ++ op ++ " b"
+                           in  testCase str $ p expr str @?= Arith tag (VariableRef "a") (VariableRef "b")
+        arithOps = [("+", Add), ("-", Sub), ("*", Mul), ("/", Div), ("%", Mod), ("^", Pow)]
+
+testCmpOp :: TestTree
+testCmpOp = testGroup "Comparison" $ map mkTest cmpOps
+  where mkTest (op, tag) = let str = "a " ++ op ++ " b"
+                           in  testCase str $ p expr str @?= Relation tag (VariableRef "a") (VariableRef "b")
+        cmpOps = [("==", CmpEQ), ("!=", CmpNE), (">", CmpGT), (">=", CmpGE), ("<", CmpLT), ("<=", CmpLE)]
+
+testMatchOp :: TestTree
+testMatchOp = testGroup "Matching"
+    [ testCase "a  ~ /test/" $ p expr "a  ~ /test/" @?= Match   (VariableRef "a") (Const $ LitRE "test")
+    , testCase "a  ~ str"    $ p expr "a  ~  str"   @?= Match   (VariableRef "a") (VariableRef "str")
+    , testCase "a !~ /test/" $ p expr "a !~ /test/" @?= NoMatch (VariableRef "a") (Const $ LitRE "test")
+    ]
+
+testLogicOp :: TestTree
+testLogicOp = testGroup "Logic"
+    [ testCase "a && b" $ p expr "a && b" @?= Logic AND (VariableRef "a") (VariableRef "b")
+    , testCase "a || b" $ p expr "a || b" @?= Logic OR  (VariableRef "a") (VariableRef "b")
+    , testCase "!a"     $ p expr     "!a" @?= Not       (VariableRef "a")
+    ]
+
+testConditionalOp :: TestTree
+testConditionalOp = testCase "Conditional" $
+    p expr "a ? b : c" @?= InlineIf (VariableRef "a") (VariableRef "b") (VariableRef "c")
+
+testIncDec :: TestTree
+testIncDec = testGroup "Unary increment/decrement"
+    [ testCase "i++" $ p expr "i++" @?= Incr Post (VariableRef "i")
+    , testCase "++i" $ p expr "++i" @?= Incr Pre  (VariableRef "i")
+    , testCase "j--" $ p expr "j--" @?= Decr Post (VariableRef "j")
+    , testCase "--j" $ p expr "--j" @?= Decr Pre  (VariableRef "j")
+    ]
+
+testBuiltinFuncArith :: TestTree
+testBuiltinFuncArith = testGroup "Built-in functions" $ testAtan2 : testRand : map mkTest otherFuncs
+  where testAtan2 = testCase "atan2(y,x)" $ p expr "atan2(y,x)" @?= FunCall Atan2 [ VariableRef "y"
+                                                                                  , VariableRef "x" ]
+        testRand  = testCase "rand()"     $ p expr "rand()"     @?= FunCall Rand []
+        mkTest (f, tag) = testCase f $ p expr f @?= FunCall tag [VariableRef "x"]
+        otherFuncs = [ ("cos(x)", Cos), ("exp(x)",  Exp),  ("int(x)",   Int),  ("log(x)", Log)
+                     , ("sin(x)", Sin), ("sqrt(x)", Sqrt), ("srand(x)", Srand) ] 
+
+testConcat :: TestTree
+testConcat = testGroup "Concatenation"
+    [ testCase "a b"   $ p expr "a b"   @?= Concat (VariableRef "a") (VariableRef "b")
+    , testCase "a b c" $ p expr "a b c" @?= Concat (Concat (VariableRef "a") (VariableRef "b"))
+                                                           (VariableRef "c")
+    , testCase "NR \":\" $0" $ p expr "NR \":\" $0" @?= Concat (Concat (BuiltInVar NR) (cls ":"))
+                                                               (FieldRef (cln 0))
     ]

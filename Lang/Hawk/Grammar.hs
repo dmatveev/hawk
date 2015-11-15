@@ -194,7 +194,7 @@ pgetl   = Postfix (try $ do {rsvd "|"; rsvd "getline"; return PGetline})
 pgetlv  = Postfix (try $ do {rsvd "|"; rsvd "getline"; v <- variableRef;
                              return $ \e -> PGetlineVar e v})
 
-conc = Infix (return Concat) AssocRight
+conc = Infix (return Concat) AssocLeft
 
 iif = Infix (try $ do {symbol "?"; t <- expr; symbol ":"; return $ \c e -> InlineIf c t e})
       AssocRight
