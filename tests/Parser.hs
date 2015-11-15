@@ -21,12 +21,24 @@ p pp s = case parse pp "" s of
   (Left e)  -> error $ show e
   (Right a) -> a
 
+data ParseResult = ParseError | ParseSuccess deriving (Eq, Show)
+
+pr :: Parser a -> String -> ParseResult
+pr pp s = case parse pp "" s of
+  (Left _)  -> ParseError
+  (Right _) -> ParseSuccess
+
 parser :: TestTree
 parser =  testGroup "Parser"
     [ testPatterns
     , testExpressions
+    , testControlFlow
     ]
 
+------------------------------------------------------------
+--
+-- Patterns group
+--
 testPatterns :: TestTree
 testPatterns = testGroup "Patterns"
     [ testCase "BEGIN"    $ p pattern "BEGIN"  @?= BEGIN
@@ -37,6 +49,10 @@ testPatterns = testGroup "Patterns"
     , testCase "Range"    $ p pattern "a, b"   @?= RANGE (EXPR (VariableRef "a")) (EXPR (VariableRef "b"))
     ]
 
+------------------------------------------------------------
+--
+-- Expressions group
+--
 testExpressions :: TestTree
 testExpressions = testGroup "Expressions"
     [ testNumericLiterals
@@ -157,7 +173,7 @@ testBuiltinFuncArith = testGroup "Built-in functions" $ testAtan2 : testRand : m
         testRand  = testCase "rand()"     $ p expr "rand()"     @?= FunCall Rand []
         mkTest (f, tag) = testCase f $ p expr f @?= FunCall tag [VariableRef "x"]
         otherFuncs = [ ("cos(x)", Cos), ("exp(x)",  Exp),  ("int(x)",   Int),  ("log(x)", Log)
-                     , ("sin(x)", Sin), ("sqrt(x)", Sqrt), ("srand(x)", Srand) ] 
+                     , ("sin(x)", Sin), ("sqrt(x)", Sqrt), ("srand(x)", Srand) ]
 
 testConcat :: TestTree
 testConcat = testGroup "Concatenation"
@@ -166,4 +182,101 @@ testConcat = testGroup "Concatenation"
                                                            (VariableRef "c")
     , testCase "NR \":\" $0" $ p expr "NR \":\" $0" @?= Concat (Concat (BuiltInVar NR) (cls ":"))
                                                                (FieldRef (cln 0))
+    ]
+
+------------------------------------------------------------
+--
+-- Control flow group
+--
+testControlFlow :: TestTree
+testControlFlow = testGroup "Control flow"
+    [ testIf
+    , testWhile
+    , testFor
+    , testDoWhile
+    , testCFKeywords
+    ]
+
+testIf :: TestTree
+testIf = testGroup "if"
+    [ testCase "if (a) b = 1"                $ p  statement "if (a) b = 1"                @?=
+          IF (VariableRef "a")
+             (Expression $ Assignment Set (VariableRef "b") (cln 1))
+             Nothing
+    , testCase "if (b) c++   else d++"       $ pr statement "if (b) c++  else   d++"      @?=
+          ParseError
+    , testCase "if (b) c++\\nelse d++"       $ pr statement "if (b) c++  else\\nd++"      @?=
+          ParseError
+    , testCase "if (b) c++;  else d++"       $ p  statement "if (b) c++; else   d++"      @?=
+          IF (VariableRef "b")
+             (Expression $ Incr Post (VariableRef "c"))
+             (Just $ Expression $ Incr Post (VariableRef "d"))
+    , testCase "if (b) {c++} else d++"       $ p  statement "if (b) {c++} else  d++"      @?=
+          IF (VariableRef "b")
+             (Block [Expression $ Incr Post (VariableRef "c")])
+             (Just $ Expression $ Incr Post (VariableRef "d"))
+    , testCase "if (b) {c++} else {d++}"     $ p  statement "if (b) {c++} else {d++}"     @?=
+          IF (VariableRef "b")
+             (Block [Expression $ Incr Post (VariableRef "c")])
+             (Just $ Block [Expression $ Incr Post (VariableRef "d")])
+    , testCase "if (b) if (c) d++; else e++" $ p  statement "if (b) if (c) d++; else e++" @?=
+          IF (VariableRef "b")
+             (IF (VariableRef "c")
+                 (Expression $ Incr Post (VariableRef "d"))
+                 (Just $ Expression $ Incr Post (VariableRef "e")))
+             Nothing
+    ]
+
+testWhile :: TestTree
+testWhile = testGroup "while"
+    [ testCase "while (a) a--"                 $ p statement "while (a) a--"                 @?=
+          WHILE (VariableRef "a") (Expression $ Decr Post (VariableRef "a"))
+    , testCase "while (--a) ;"                 $ p statement "while (--a) ;"                 @?=
+          WHILE (Decr Pre (VariableRef "a")) NOP
+    , testCase "while (a > b) { b -= a; a--}" $ p statement "while (a > b) { b -= a; a--}" @?=
+          WHILE (Relation CmpGT (VariableRef "a") (VariableRef "b"))
+                (Block [ Expression (Assignment Sub (VariableRef "b") (VariableRef "a"))
+                       , NOP
+                       , Expression (Decr Post (VariableRef "a")) ])
+    ]
+
+testFor :: TestTree
+testFor = testGroup "for"
+    [ testCase "for (;;);"                   $ p statement "for (;;);"                   @?=
+          FOR Nothing
+              Nothing
+              Nothing
+              NOP
+    , testCase "for (i=0; i<10; i++);"       $ p statement "for (i=0; i<10; i++);"       @?=
+          FOR (Just $ Assignment Set (VariableRef "i") (cln 0 ))
+              (Just $ Relation CmpLT (VariableRef "i") (cln 10))
+              (Just $ Incr Post (VariableRef "i"))
+              NOP
+    , testCase "for (i=0; i<10; i++) j += i" $ p statement "for (i=0; i<10; i++) j += i" @?=
+          FOR (Just $ Assignment Set (VariableRef "i") (cln 0 ))
+              (Just $ Relation CmpLT (VariableRef "i") (cln 10))
+              (Just $ Incr Post (VariableRef "i"))
+              (Expression $ Assignment Add (VariableRef "j") (VariableRef "i"))
+    ]
+
+testDoWhile :: TestTree
+testDoWhile = testGroup "do..while"
+    [ testCase "do i++ while (i<10)"         $ p statement "do i++ while (i<10)"         @?=
+          DO (Expression (Incr Post (VariableRef "i")))
+             (Relation CmpLT (VariableRef "i") (cln 10))
+    , testCase "do {j--; i++} while (j > i)" $ p statement "do {j--; i++} while (j > i)" @?=
+          DO (Block [ (Expression $ Decr Post (VariableRef "j"))
+                    , NOP
+                    , (Expression $ Incr Post (VariableRef "i")) ])
+             (Relation CmpGT (VariableRef "j") (VariableRef "i"))
+    ]
+
+testCFKeywords :: TestTree
+testCFKeywords = testGroup "Keywords"
+    [ testCase "break"      $ p statement "break"      @?= BREAK
+    , testCase "continue"   $ p statement "continue"   @?= CONT
+    , testCase "next"       $ p statement "next"       @?= NEXT
+    , testCase "exit"       $ p statement "exit"       @?= EXIT Nothing
+    , testCase "exit 1"     $ p statement "exit 1"     @?= EXIT (Just $ cln 1)
+    , testCase "exit (a+b)" $ p statement "exit (a+b)" @?= EXIT (Just $ (Arith Add (VariableRef "a") (VariableRef "b")))
     ]

@@ -12,6 +12,7 @@
         , fieldRef
 
         , expr
+        , statement
         ) where
 
 import qualified Data.ByteString.Char8 as B
