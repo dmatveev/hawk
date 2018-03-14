@@ -2,6 +2,7 @@ module Lang.Hawk.Options (HawkConfig(..), HawkProg(..), parseHawkArgs) where
 
 import qualified Text.Parsec as P
 import Options.Applicative
+import Data.Monoid ((<>))
 
 import Lang.Hawk.Value
 import qualified Lang.Hawk.AST as A (Expression(..))
