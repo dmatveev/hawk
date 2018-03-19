@@ -44,17 +44,18 @@ inThread io = do
 
 run :: CompiledSource -> Handle -> String -> IO ()
 run (CompiledSource startup actions finalize) h file = inThread $
-    let f = case actions of
-             (CompiledSync      _)     -> executeSync
-             (CompiledIOAsync   _)     -> executeIOAsync
-             (CompiledFullAsync _ _ _) -> executeFullAsync
-    in f startup actions finalize h file
+    -- let f = case actions of
+    --          (CompiledSync      _)     -> executeSync
+    --          (CompiledIOAsync   _)     -> executeIOAsync
+    --          (CompiledFullAsync _ _ _) -> executeFullAsync
+    executeSync startup actions finalize h file
    
 executeSync :: [OpCode] -> CompiledActions -> [OpCode] -> Handle -> String -> IO ()
 executeSync startup (CompiledSync actions) finalize h file = do
   out <- mkOutput
   outSink <- mkNonBufferedSink out
-  forkIO $ runWriterThread out
+  outSync <- newEmptyMVar
+  forkIO $ runWriterThread out >> putMVar outSync ()
   inp <- fromHandle h
   ctx <- emptyContext startup inp outSink
   cont <- runInterpreter wrkInit ctx
@@ -63,6 +64,8 @@ executeSync startup (CompiledSync actions) finalize h file = do
      runInterpreter syncLoop ctx
   modifyIORef' ctx $ \s -> s {hcOPCODES = finalize}
   runInterpreter wrkFinish ctx
+  closeOutput out
+  takeMVar outSync -- wait for writer completion
   return ()
  where
   syncLoop ctx = do

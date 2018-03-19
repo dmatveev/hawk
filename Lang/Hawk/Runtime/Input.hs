@@ -64,7 +64,7 @@ nextLine (FromHandle h rb re) rs = do
                                                        return $! (Just l)
                 | B.null rest && not eof -> do
                      LOG("READR: OK, Getting the next 8K...")
-                     nextChunk <- B.hGet h 8192
+                     nextChunk <- B.hGetSome h 8192
                      LOG("READR: Done")
                      modifyIORef' rb (\tb -> B.append tb nextChunk)
                      writeIORef   re (B.null nextChunk)

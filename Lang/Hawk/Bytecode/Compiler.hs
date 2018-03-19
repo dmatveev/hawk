@@ -329,10 +329,11 @@ compile :: AwkSource -> Int -> IO CompiledSource
 compile src threads = do
   let opcodes      = compileNoRefs src
       (effs, plan) = analyze src
-  case plan of
-    Parallel     -> compileParallel opcodes effs
-    ParallelIO   -> compileSync     opcodes effs CompiledIOAsync
-    Synchronized -> compileSync     opcodes effs CompiledSync
+  compileSync opcodes effs CompiledSync
+  -- case plan of
+    -- Parallel     -> compileParallel opcodes effs
+    -- ParallelIO   -> compileSync     opcodes effs CompiledIOAsync
+    -- Synchronized -> compileSync     opcodes effs CompiledSync
  where
   compileParallel (startup, actions, shutdown) effects = do
     (rt:rts) <- replicateM (threads + 1) $ mkRewriteTable effects
