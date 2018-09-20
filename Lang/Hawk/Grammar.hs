@@ -46,7 +46,7 @@ hawkBuiltinVars =
     , ("SUBSEP"  ,SUBSEP  ) -- subscript separator (default "\034")
     ]
 
-hawkFunctions = 
+hawkFunctions =
     [ ("atan2"  , Atan2  )
     , ("cos"    , Cos    )
     , ("exp"    , Exp    )
@@ -61,7 +61,7 @@ hawkFunctions =
     , ("substr" , Substr )
     , ("match"  , FMatch )
     , ("sub"    , FSub   )
-    , ("gsub"   , GSub   ) 
+    , ("gsub"   , GSub   )
     , ("printf" , Printf )
     , ("sprintf", SPrintf)
     , ("close"  , Close  )
@@ -88,7 +88,7 @@ hawkConstructs =
 -- Lexer
 lexer = P.makeTokenParser
         ( emptyDef
-        { P.commentLine     = "#" 
+        { P.commentLine     = "#"
         , P.reservedNames   = ["BEGIN","END"] ++ (map fst hawkBuiltinVars) ++ hawkConstructs
         , P.reservedOpNames = ["*","/","+","-","%","^"
                               ,"=","*=","/=","+=","-=","%=","^="
@@ -118,18 +118,23 @@ range   = RANGE <$> sp <* rsvdOp "," <*> sp <?> "range pattern" where sp = exprp
 -- Expression grammar
 expr    = buildExpressionParser defaultTable term <?> "expression"
 prnExpr = buildExpressionParser printTable   term <?> "expression (print)"
-patExpr = buildExpressionParser patternTable term <?> "expression (pattern)" 
+patExpr = buildExpressionParser patternTable term <?> "expression (pattern)"
 
 term = parens expr
      <|> try funcalls
      <|> try getline
-     <|> literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
+     <|> try literal <|> fieldRef <|> try arrayRef <|> variableRef <|> builtInVars
 
 literal = stringLit <|> numericLit <|> regexLit <?> "literal"
 
 regexLit   = (Const . LitRE)      <$> regex
 stringLit  = (Const . LitStr)     <$> strlit
-numericLit = (Const . LitNumeric) <$> (try float <|> liftM fromIntegral natural)
+numericLit = (Const . LitNumeric) <$> (try negValue <|> try posValue <|> value)
+  where
+    value    = (try float <|> liftM fromIntegral natural)
+    negValue = char '-' *> liftM negate value
+    posValue = char '+' *> value
+
 regex      = char '/' *> manyTill anyChar (char '/') <* whitespace <?> "regex"
 
 fieldRef = FieldRef <$> (char '$' *> r <?> "data field reference")
@@ -190,7 +195,7 @@ binary  name fun assoc = Infix   (do {rsvdOp name; return fun}) assoc
 prefix  name fun       = Prefix  (do {rsvdOp name; return fun})
 postfix name fun       = Postfix (do {rsvdOp name; return fun})
 
-fgetl   = Prefix  (try $ do {rsvd "getline"; rsvd "<"; return FGetline}) 
+fgetl   = Prefix  (try $ do {rsvd "getline"; rsvd "<"; return FGetline})
 pgetl   = Postfix (try $ do {rsvd "|"; rsvd "getline"; return PGetline})
 pgetlv  = Postfix (try $ do {rsvd "|"; rsvd "getline"; v <- variableRef;
                              return $ \e -> PGetlineVar e v})
@@ -218,11 +223,11 @@ stFPrint = FPRINT <$> stPrnCommon <*> fileMod <*> expr
 stPPrint = PPRINT <$> stPrnCommon <* symbol "|" <*> expr
    <?> "print to process"
 
-stBlock = Block <$> (symbol "{" *> spc *> many statement <* symbol "}" <* spc)
+stBlock = Block <$> (symbol "{" *> spc *> many statementSpace <* symbol "}" <* spc)
           <?> "block of statements"
 
 stIf = IF <$> (rsvd "if" *> parens expr <* spc) <*> statement <*> tryElse
-  where tryElse = optionMaybe (rsvd "else" >> spc >> statement)
+ where tryElse = optionMaybe (rsvd "else" >> spc >> statement)
 
 stWhile = WHILE <$> (rsvd "while" *> parens expr <* spc) <*> (stBlock <|> stExpr)
 
@@ -238,7 +243,7 @@ stFor = do
        s <- optionMaybe expr
        return (i,c,s)
     spc
-    s <- statement
+    s <- statementSpace
     return $ FOR mInit mCond mStep s
 
 stForEach = do
@@ -249,7 +254,7 @@ stForEach = do
        a <- identifier
        return (v,a)
     spc
-    s <- statement
+    s <- statementSpace
     return $ FOREACH var arr s
 
 stDelete = DELETE <$> (rsvd "delete" >> (try arrayRef <|> variableRef))
@@ -260,7 +265,7 @@ stNop    = symbol   ";"    >> return NOP
 stExit   = EXIT   <$> (rsvd "exit"   >> optionMaybe expr)
 stReturn = RETURN <$> (rsvd "return" >> optionMaybe expr)
 
-statement = (try stIf
+statementJust = try stIf
             <|> try stDoWhile
             <|> try stWhile
             <|> try stFor
@@ -274,8 +279,12 @@ statement = (try stIf
             <|> try stFPrint <|> try stPPrint <|> stPrint
             <|> stNop
             <|> stBlock
-            <|> stExpr) <* spc
-          <?> "statement"
+            <|> stExpr
+
+statementSpace = statementJust <* spc <?> "statement"
+
+-- "Compatibility overload"
+statement = statementSpace
 
 -- Top-level AWK constructs
 -- The AWK book does not give any names to pattern-statement pairs, so I did.
@@ -285,7 +294,7 @@ function = do
     rsvd "function"
     name <- identifier
     params <- parens $ identifier `sepBy` (symbol ",")
-    body <- statement
+    body <- statementSpace
     return $ Function name params body
 
 section = do
@@ -297,11 +306,12 @@ section = do
     return $ Section mp ma
     <?> "section"
 
-action = Block <$> (char '{' *> spc *> many statement <* char '}' <* spc) <?> "action"
+action = Block <$> (char '{' *> spc *> many statementSpace <* char '}' <* spc) <?> "action"
 
 awk = spc *> many toplevel <* eof
 
 spc = whitespace `sepBy` newline
+spcNL = whitespace >> many1 (newline >> whitespace)
 
 setVar = (,) <$> (try variableRef <|> builtInVars) <*> (symbol "=" *> lit)
   where lit = (try $ numericLit <* eof) <|> (try $ regexLit <* eof) <|> str

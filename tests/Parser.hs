@@ -76,6 +76,8 @@ testNumericLiterals = testGroup "Numeric literals"
     , testCase "double"  $ p literal "1.0"    @?= cln   1.0
     , testCase "sign +"  $ p literal "+1"     @?= cln   1.0
     , testCase "sign -"  $ p literal "-1"     @?= cln (-1.0)
+    , testCase "sign +f" $ p literal "+1.0"   @?= cln   1.0
+    , testCase "sign -f" $ p literal "-1.0"   @?= cln (-1.0)
     , testCase "sci1"    $ p literal "0.1e+1" @?= cln   1.0
     , testCase "sci2"    $ p literal "10E-1"  @?= cln   1.0
     , testCase "octal"   $ p literal "001"    @?= cln   1.0
@@ -122,6 +124,7 @@ testAssignments = testGroup "Assignments"
     [ testCase "x = 1"       $ p expr "x = 1"        @?= Assignment Set (VariableRef "x")  (cln 1)
     , testCase "x+= 1"       $ p expr "x+= 1"        @?= Assignment Add (VariableRef "x")  (cln 1)
     , testCase "x-= 1"       $ p expr "x-= 1"        @?= Assignment Sub (VariableRef "x")  (cln 1)
+    , testCase "x*= 1"       $ p expr "x*= 1"        @?= Assignment Mul (VariableRef "x")  (cln 1)
     , testCase "x/= 1"       $ p expr "x/= 1"        @?= Assignment Div (VariableRef "x")  (cln 1)
     , testCase "x%= 1"       $ p expr "x%= 1"        @?= Assignment Mod (VariableRef "x")  (cln 1)
     , testCase "x^= 1"       $ p expr "x^= 1"        @?= Assignment Pow (VariableRef "x")  (cln 1)
